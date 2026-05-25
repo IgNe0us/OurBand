@@ -1,0 +1,6 @@
+{
+  "name": "합주방 - 합주실 찾기",
+  "description": "실시간 내 주변 빈 합주실 검색 및 예약 스튜디오 플랫폼",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}
