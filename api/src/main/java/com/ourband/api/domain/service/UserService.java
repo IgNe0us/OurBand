@@ -55,6 +55,7 @@ public class UserService {
     private final UserHistoryMediaRepository userHistoryMediaRepository;
     private final HistoryLikeRepository historyLikeRepository;
     private final HistoryCommentRepository historyCommentRepository;
+    private final com.ourband.api.domain.repository.BandRepository bandRepository;
 
     private final R2StorageService r2StorageService; // 💡 주입 추가
 
@@ -444,6 +445,148 @@ public class UserService {
                 
         history.increaseShareCount(); // 엔티티 내부의 수량 증가 메서드 호출
         // @Transactional 덕분에 함수가 끝나면 DB에 자동으로 update 쿼리가 날아갑니다.
+    }
+
+    // ========================================
+    // 💡 팔로워 / 팔로잉 목록 조회 기능
+    // ========================================
+
+    /**
+     * 나를 팔로우하는 사람 목록 (팔로워 리스트)
+     * @param loginUserId 현재 로그인한 유저 ID (isFollowing 판별용)
+     * @param targetUserId 조회 대상 유저 ID
+     */
+    @Transactional(readOnly = true)
+    public List<com.ourband.api.domain.dto.user.FollowUserDTO> getFollowers(Long loginUserId, Long targetUserId) {
+        // 나를 팔로우하는 사람들의 Follow 레코드 조회
+        List<com.ourband.api.domain.model.Follow> followerRecords = followRepository.findByFollowingId(targetUserId);
+
+        return followerRecords.stream().map(follow -> {
+            Long userId = follow.getFollowerId(); // 팔로우하는 사람의 ID
+            User user = userRepository.findById(userId).orElse(null);
+            if (user == null) return null;
+
+            Profile profile = profileRepository.findByUser_UserId(userId).orElse(null);
+
+            // 내(loginUser)가 이 사람을 팔로우하고 있는지 확인
+            boolean isFollowing = followRepository.findByFollowerIdAndFollowingId(loginUserId, userId).isPresent();
+
+            return com.ourband.api.domain.dto.user.FollowUserDTO.builder()
+                    .userId(user.getUserId())
+                    .nickname(user.getNickname())
+                    .profilePictureUrl(profile != null ? profile.getProfilePictureUrl() : null)
+                    .bio(profile != null ? profile.getBio() : null)
+                    .instrument(profile != null ? profile.getInstrument() : null)
+                    .isFollowing(isFollowing)
+                    .build();
+        }).filter(dto -> dto != null).toList();
+    }
+
+    /**
+     * 내가 팔로우하는 사람 목록 (팔로잉 리스트)
+     * @param loginUserId 현재 로그인한 유저 ID (isFollowing 판별용)
+     * @param targetUserId 조회 대상 유저 ID
+     */
+    @Transactional(readOnly = true)
+    public List<com.ourband.api.domain.dto.user.FollowUserDTO> getFollowings(Long loginUserId, Long targetUserId) {
+        // 내가 팔로우하는 사람들의 Follow 레코드 조회
+        List<com.ourband.api.domain.model.Follow> followingRecords = followRepository.findByFollowerId(targetUserId);
+
+        return followingRecords.stream().map(follow -> {
+            Long userId = follow.getFollowingId(); // 팔로우 대상의 ID
+            User user = userRepository.findById(userId).orElse(null);
+            if (user == null) return null;
+
+            Profile profile = profileRepository.findByUser_UserId(userId).orElse(null);
+
+            // 내(loginUser)가 이 사람을 팔로우하고 있는지 확인
+            boolean isFollowing = followRepository.findByFollowerIdAndFollowingId(loginUserId, userId).isPresent();
+
+            return com.ourband.api.domain.dto.user.FollowUserDTO.builder()
+                    .userId(user.getUserId())
+                    .nickname(user.getNickname())
+                    .profilePictureUrl(profile != null ? profile.getProfilePictureUrl() : null)
+                    .bio(profile != null ? profile.getBio() : null)
+                    .instrument(profile != null ? profile.getInstrument() : null)
+                    .isFollowing(isFollowing)
+                    .build();
+        }).filter(dto -> dto != null).toList();
+    }
+
+    // ========================================
+    // 💡 팔로우 / 언팔로우 토글 기능
+    // ========================================
+
+    /**
+     * 팔로우 토글 (팔로우 중이면 언팔로우, 아니면 팔로우)
+     * @param loginUserId 현재 로그인한 유저 ID (팔로우를 하는 사람)
+     * @param targetUserId 팔로우 대상 유저 ID (팔로우를 받는 사람)
+     * @return true: 팔로우됨, false: 언팔로우됨
+     */
+    @Transactional
+    public boolean toggleFollow(Long loginUserId, Long targetUserId) {
+        if (loginUserId.equals(targetUserId)) {
+            throw new IllegalArgumentException("자기 자신을 팔로우할 수 없습니다.");
+        }
+
+        Optional<com.ourband.api.domain.model.Follow> existing = followRepository.findByFollowerIdAndFollowingId(loginUserId, targetUserId);
+
+        if (existing.isPresent()) {
+            // 이미 팔로우 중 → 언팔로우
+            followRepository.delete(existing.get());
+            return false;
+        } else {
+            // 팔로우하지 않은 상태 → 팔로우
+            com.ourband.api.domain.model.Follow newFollow = com.ourband.api.domain.model.Follow.builder()
+                    .followerId(loginUserId)
+                    .followingId(targetUserId)
+                    .build();
+            followRepository.save(newFollow);
+            return true;
+        }
+    }
+
+    // ========================================
+    // 💡 밴드 창설 기능
+    // ========================================
+
+    /**
+     * 밴드 창설 - bands 테이블에 밴드 생성 + band_members에 창설자 자동 등록
+     */
+    @Transactional
+    public BandSimpleDTO createBand(Long userId, com.ourband.api.domain.dto.user.BandCreateRequestDTO request) {
+        // 1. 창설자의 포지션(악기) 정보 조회
+        Profile profile = profileRepository.findByUser_UserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("프로필 정보가 없습니다."));
+
+        // 2. Band 엔티티 생성 및 저장
+        com.ourband.api.domain.model.Bands band = com.ourband.api.domain.model.Bands.builder()
+                .name(request.getName())
+                .location(request.getLocation())
+                .genre(request.getGenre())
+                .description(request.getDescription())
+                .logoImageUrl(request.getLogoImageUrl())
+                .build();
+        com.ourband.api.domain.model.Bands savedBand = bandRepository.save(band);
+
+        // 3. 창설자를 band_members에 자동 등록 (role = 프로필의 instrument, status = JOINED)
+        String role = profile.getInstrument() != null ? profile.getInstrument() : "member";
+        com.ourband.api.domain.model.BandMember member = com.ourband.api.domain.model.BandMember.builder()
+                .bandId(savedBand.getId())
+                .userId(userId)
+                .role(role)
+                .status("JOINED")
+                .build();
+        bandMemberRepository.save(member);
+
+        // 4. 응답 DTO 반환
+        return new BandSimpleDTO(
+                savedBand.getId(),
+                savedBand.getName(),
+                role,
+                savedBand.getLogoImageUrl(),
+                savedBand.getCreatedAt()
+        );
     }
 
 }

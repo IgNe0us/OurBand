@@ -109,3 +109,51 @@ export const addHistoryCommentApi = async (historyId: string | number, content: 
 export const increaseHistoryShareApi = async (historyId: string | number) => {
   await apiClient.post(`/users/history/${historyId}/share`, {});
 };
+
+// ========================================
+// 💡 팔로워 / 팔로잉 API
+// ========================================
+
+export type FollowUser = {
+  userId: number;
+  nickname: string;
+  profilePictureUrl: string | null;
+  bio: string | null;
+  instrument: string | null;
+  isFollowing: boolean; // 내가 이 유저를 팔로우하고 있는지 여부 (following 필드명이 JSON에서 isFollowing이 아닌 following으로 올 수 있음)
+};
+
+// 나를 팔로우하는 사람 목록 (팔로워)
+export const getFollowersApi = async (): Promise<FollowUser[]> => {
+  const response = await apiClient.get('/users/followers');
+  return response.data;
+};
+
+// 내가 팔로우하는 사람 목록 (팔로잉)
+export const getFollowingsApi = async (): Promise<FollowUser[]> => {
+  const response = await apiClient.get('/users/followings');
+  return response.data;
+};
+
+// 팔로우 / 언팔로우 토글
+export const toggleFollowApi = async (targetUserId: number): Promise<{ isFollowing: boolean }> => {
+  const response = await apiClient.post(`/users/follow/${targetUserId}`);
+  return response.data;
+};
+
+// ========================================
+// 💡 밴드 창설 API
+// ========================================
+
+export type BandCreateRequest = {
+  name: string;
+  location: string;
+  genre: string;
+  description: string;
+  logoImageUrl: string;
+};
+
+export const createBandApi = async (data: BandCreateRequest) => {
+  const response = await apiClient.post('/users/band', data);
+  return response.data;
+};

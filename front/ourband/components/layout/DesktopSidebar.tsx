@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Home, Search, Music, MapPin, User, MessageCircle, Mic2, HeartHandshake, PenTool, Users, PlaySquare, UserPlus, AudioWaveform, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { getUserInfoApi } from "@/api/account/userService";
 
 const NAV_ITEMS = [
   { path: "/", label: "트렌드", icon: Home },
@@ -22,17 +23,23 @@ const COMMUNITY_ITEMS = [
   { path: "/community/flex", label: "악기자랑", icon: PenTool },
 ];
 
-const MY_BANDS = [
-  { path: "/band/rubyspark/board", label: "루비스파크", icon: PlaySquare },
-];
-
 export function DesktopSidebar() {
   const pathname = usePathname();
   const location = { pathname: pathname || "/" };
   const [isAdmin, setIsAdmin] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem('ourband_isAdmin') === 'true');
+    
+    // 💡 실시간 유저 정보 로드
+    getUserInfoApi()
+      .then((data) => {
+        setUser(data);
+      })
+      .catch((err) => {
+        console.error("Failed to load user info in sidebar", err);
+      });
   }, [pathname]);
 
   return (
@@ -95,22 +102,42 @@ export function DesktopSidebar() {
         <div>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 px-3">My Band</p>
           <nav className="space-y-1">
-            {MY_BANDS.map(({ path, label, icon: Icon }) => {
-              const isActive = location.pathname === path;
-              return (
-                <Link key={path} href={path}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300",
-                    isActive 
-                      ? "bg-primary/10 text-primary font-bold" 
-                      : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 font-medium"
-                  )}
-                >
-                  <Icon className={cn("w-5 h-5", isActive && "fill-primary/20")} strokeWidth={isActive ? 2.5 : 2} />
-                  {label}
-                </Link>
-              );
-            })}
+            {!user ? (
+              // 💡 로딩 중 스켈레톤 표시
+              <div className="px-3 py-3 animate-pulse flex items-center gap-3">
+                <div className="w-5 h-5 bg-slate-800 rounded" />
+                <div className="w-24 h-3 bg-slate-800 rounded" />
+              </div>
+            ) : user.bands && user.bands.length > 0 ? (
+              user.bands.map((band: any) => {
+                const path = `/band/${band.bandId}/board`;
+                const isActive = location.pathname === path;
+                return (
+                  <Link key={band.bandId} href={path}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300",
+                      isActive 
+                        ? "bg-primary/10 text-primary font-bold" 
+                        : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 font-medium"
+                    )}
+                  >
+                    {band.logoImageUrl ? (
+                      <img 
+                        src={band.logoImageUrl} 
+                        alt={band.bandName} 
+                        className="w-5 h-5 rounded-md object-cover border border-slate-700 shrink-0" 
+                        referrerPolicy="no-referrer" 
+                      />
+                    ) : (
+                      <PlaySquare className={cn("w-5 h-5 shrink-0", isActive && "fill-primary/20")} strokeWidth={isActive ? 2.5 : 2} />
+                    )}
+                    <span className="truncate">{band.bandName}</span>
+                  </Link>
+                );
+              })
+            ) : (
+              <p className="text-xs text-slate-500 px-3 py-2">가입된 밴드가 없습니다.</p>
+            )}
           </nav>
         </div>
       </div>
@@ -122,13 +149,28 @@ export function DesktopSidebar() {
             관리자 대시보드
           </Link>
         )}
-        <Link href="/profile" className="flex items-center gap-3 group">
-          <img src="https://picsum.photos/seed/george/100/100" alt="My Profile" className="w-10 h-10 rounded-full border border-border group-hover:border-primary transition-colors" />
-          <div className="flex flex-col">
-            <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">조지스미스</span>
-            <span className="text-xs text-slate-400">@george_smith</span>
+        {user ? (
+          <Link href="/profile" className="flex items-center gap-3 group">
+            <img 
+              src={user.profilePictureUrl || `https://picsum.photos/seed/user${user.userId || '1'}/100/100`} 
+              alt="My Profile" 
+              className="w-10 h-10 rounded-full border border-border group-hover:border-primary transition-colors object-cover" 
+              referrerPolicy="no-referrer"
+            />
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">{user.nickname}</span>
+              <span className="text-xs text-slate-400">@{user.handle || `user_${user.userId || '1'}`}</span>
+            </div>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-3 animate-pulse">
+            <div className="w-10 h-10 rounded-full bg-slate-700" />
+            <div className="flex flex-col gap-1.5">
+              <div className="w-16 h-3 bg-slate-700 rounded" />
+              <div className="w-20 h-2.5 bg-slate-700 rounded" />
+            </div>
           </div>
-        </Link>
+        )}
       </div>
     </aside>
   );

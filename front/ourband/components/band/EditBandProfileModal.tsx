@@ -1,35 +1,12 @@
 "use client";
 // @ts-nocheck
-import { X, Camera, Save, Plus, Trash2, UserPlus } from "lucide-react";
+import { X, Camera, Save, Plus, Trash2, UserPlus, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useState, useEffect } from "react";
-import { cn } from "@/lib/utils";;
+import { useState, useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
+import { uploadToCloudflare } from "@/lib/cloudflare";
 
-export interface BandHistory {
-  id: string;
-  date: string;
-  title: string;
-}
-
-export interface BandPosition {
-  id: string;
-  role: string;
-  memberName: string;
-  isRecruiting: boolean;
-}
-
-export interface BandProfileData {
-  name: string;
-  genre: string;
-  location: string;
-  frequency: string;
-  description: string;
-  coverImage: string;
-  logoImage: string;
-  positions: BandPosition[];
-  history?: BandHistory[];
-}
-
+import { type BandProfileData, type BandHistory, type BandPositionData as BandPosition } from "@/api/band/bandService";
 interface EditBandProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -39,6 +16,11 @@ interface EditBandProfileModalProps {
 
 export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: EditBandProfileModalProps) {
   const [formData, setFormData] = useState<BandProfileData>(initialData);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -58,6 +40,36 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingLogo(true);
+    try {
+      const url = await uploadToCloudflare(file);
+      setFormData((prev) => ({ ...prev, logoImage: url }));
+    } catch (err) {
+      console.error("Failed to upload logo:", err);
+      alert("로고 업로드에 실패했습니다. 다시 시도해 주세요.");
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingCover(true);
+    try {
+      const url = await uploadToCloudflare(file);
+      setFormData((prev) => ({ ...prev, coverImage: url }));
+    } catch (err) {
+      console.error("Failed to upload cover image:", err);
+      alert("커버 이미지 업로드에 실패했습니다. 다시 시도해 주세요.");
+    } finally {
+      setIsUploadingCover(false);
+    }
+  };
+
   const handleAddPosition = () => {
     const newPosition: BandPosition = {
       id: String(Date.now() + Math.random()),
@@ -68,18 +80,18 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
     setFormData((prev) => ({ ...prev, positions: [...prev.positions, newPosition] }));
   };
 
-  const handleRemovePosition = (id: string) => {
+  const handleRemovePosition = (id: string | number) => {
     setFormData((prev) => ({ ...prev, positions: prev.positions.filter(p => p.id !== id) }));
   };
 
-  const handlePositionChange = (id: string, field: keyof BandPosition, value: any) => {
+  const handlePositionChange = (id: string | number, field: keyof BandPosition, value: any) => {
     setFormData((prev) => ({
       ...prev,
       positions: prev.positions.map(p => p.id === id ? { ...p, [field]: value } : p)
     }));
   };
 
-  const handleToggleRecruiting = (id: string) => {
+  const handleToggleRecruiting = (id: string | number) => {
     setFormData((prev) => ({
       ...prev,
       positions: prev.positions.map(p => {
@@ -88,6 +100,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
           return {
             ...p,
             isRecruiting: newIsRecruiting,
+            memberName: newIsRecruiting ? "" : p.memberName // 구인중으로 바꿀 시 이름 초기화
           };
         }
         return p;
@@ -104,11 +117,11 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
     setFormData((prev) => ({ ...prev, history: [...(prev.history || []), newHistory] }));
   };
 
-  const handleRemoveHistory = (id: string) => {
+  const handleRemoveHistory = (id: string | number) => {
     setFormData((prev) => ({ ...prev, history: (prev.history || []).filter(h => h.id !== id) }));
   };
 
-  const handleHistoryChange = (id: string, field: keyof BandHistory, value: string) => {
+  const handleHistoryChange = (id: string | number, field: keyof BandHistory, value: string) => {
     setFormData((prev) => ({
       ...prev,
       history: (prev.history || []).map(h => h.id === id ? { ...h, [field]: value } : h)
@@ -150,22 +163,50 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
             <div className="space-y-4">
               <div>
                  <label className="block text-sm font-bold text-slate-400 mb-2">커버 이미지</label>
-                 <div className="relative h-32 w-full bg-slate-800 rounded-xl overflow-hidden border border-border group cursor-pointer">
-                    <img src={formData.coverImage} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                 <div 
+                   onClick={() => !isUploadingCover && coverInputRef.current?.click()}
+                   className="relative h-32 w-full bg-slate-800 rounded-xl overflow-hidden border border-border group cursor-pointer"
+                 >
+                    <img src={formData.coverImage || "https://picsum.photos/seed/bandcover/800/400"} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Camera size={24} className="mb-1" />
-                      <span className="text-xs font-bold">이미지 변경</span>
+                      {isUploadingCover ? (
+                        <Loader2 className="animate-spin text-white mb-1" size={24} />
+                      ) : (
+                        <Camera size={24} className="mb-1" />
+                      )}
+                      <span className="text-xs font-bold">{isUploadingCover ? "업로드 중..." : "이미지 변경"}</span>
                     </div>
                  </div>
+                 <input 
+                   type="file" 
+                   ref={coverInputRef} 
+                   onChange={handleCoverChange} 
+                   accept="image/*" 
+                   className="hidden" 
+                 />
               </div>
               <div>
                  <label className="block text-sm font-bold text-slate-400 mb-2">밴드 로고</label>
-                 <div className="relative h-20 w-20 bg-slate-800 rounded-xl overflow-hidden border border-border group cursor-pointer">
-                    <img src={formData.logoImage} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                 <div 
+                   onClick={() => !isUploadingLogo && logoInputRef.current?.click()}
+                   className="relative h-20 w-20 bg-slate-800 rounded-xl overflow-hidden border border-border group cursor-pointer"
+                 >
+                    <img src={formData.logoImage || "https://picsum.photos/seed/bandlogo/150/150"} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Camera size={16} />
+                      {isUploadingLogo ? (
+                        <Loader2 className="animate-spin text-white" size={16} />
+                      ) : (
+                        <Camera size={16} />
+                      )}
                     </div>
                  </div>
+                 <input 
+                   type="file" 
+                   ref={logoInputRef} 
+                   onChange={handleLogoChange} 
+                   accept="image/*" 
+                   className="hidden" 
+                 />
               </div>
             </div>
 
@@ -174,7 +215,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                   <label className="block text-sm font-bold text-slate-400 mb-2">밴드명</label>
                   <input 
                     type="text" 
-                    value={formData.name}
+                    value={formData.name || ''}
                     onChange={(e) => handleChange("name", e.target.value)}
                     className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-primary transition-colors"
                   />
@@ -184,7 +225,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                     <label className="block text-sm font-bold text-slate-400 mb-2">선호 장르</label>
                     <input 
                       type="text" 
-                      value={formData.genre}
+                      value={formData.genre || ''}
                       onChange={(e) => handleChange("genre", e.target.value)}
                       placeholder="예: 신스팝 / 인디록"
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-primary transition-colors"
@@ -194,7 +235,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                     <label className="block text-sm font-bold text-slate-400 mb-2">합주 주기</label>
                     <input 
                       type="text" 
-                      value={formData.frequency}
+                      value={formData.frequency || ''}
                       onChange={(e) => handleChange("frequency", e.target.value)}
                       placeholder="예: 월 4회 (매주 주말)"
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-primary transition-colors"
@@ -205,7 +246,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                   <label className="block text-sm font-bold text-slate-400 mb-2">활동 지역</label>
                   <input 
                     type="text" 
-                    value={formData.location}
+                    value={formData.location || ''}
                     onChange={(e) => handleChange("location", e.target.value)}
                     placeholder="예: 홍대 / 합정"
                     className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-primary transition-colors"
@@ -214,7 +255,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                <div>
                   <label className="block text-sm font-bold text-slate-400 mb-2">밴드 소개</label>
                   <textarea 
-                    value={formData.description}
+                    value={formData.description || ''}
                     onChange={(e) => handleChange("description", e.target.value)}
                     rows={5}
                     placeholder="밴드의 방향성, 분위기 등을 자유롭게 적어주세요."
@@ -248,7 +289,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                       <input 
                         type="text" 
                         value={pos.role}
-                        onChange={(e) => handlePositionChange(pos.id, 'role', e.target.value)}
+                        onChange={(e) => handlePositionChange(pos.id!, 'role', e.target.value)}
                         placeholder="포지션 (예: 보컬)"
                         className="w-1/3 bg-secondary/50 border border-border rounded-lg px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-primary transition-colors"
                       />
@@ -257,7 +298,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                       <input 
                         type="text" 
                         value={pos.memberName}
-                        onChange={(e) => handlePositionChange(pos.id, 'memberName', e.target.value)}
+                        onChange={(e) => handlePositionChange(pos.id!, 'memberName', e.target.value)}
                         placeholder={pos.isRecruiting ? "구인 완료시 입력" : "멤버 닉네임"}
                         disabled={pos.isRecruiting}
                         className={cn(
@@ -269,7 +310,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
 
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                       <button
-                        onClick={() => handleToggleRecruiting(pos.id)}
+                        onClick={() => handleToggleRecruiting(pos.id!)}
                         className={cn(
                           "px-3 py-2 rounded-lg text-xs font-bold transition-colors border flex items-center gap-1",
                           pos.isRecruiting 
@@ -281,7 +322,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                         구인 중
                       </button>
                       <button
-                        onClick={() => handleRemovePosition(pos.id)}
+                        onClick={() => handleRemovePosition(pos.id!)}
                         className="p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors border border-transparent"
                         title="포지션 삭제"
                       >

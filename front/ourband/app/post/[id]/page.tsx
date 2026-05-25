@@ -2,7 +2,7 @@
 
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, MessageSquare, ThumbsUp, User, Share2, AlertCircle, CheckCircle2, BarChart2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { ReportModal } from '@/components/common/ReportModal';
 import { UserProfileModal } from '@/components/common/UserProfileModal';
@@ -15,6 +15,7 @@ type PollOption = {
 };
 
 type PollData = {
+  id?: string | number;
   title: string;
   description?: string;
   options: PollOption[];
@@ -23,7 +24,10 @@ type PollData = {
 };
 
 type PostData = {
-  id: string; title: string; content: string; author: string; date: string; likes: number; comments: number; tag: string; board: string; img?: string; poll?: PollData;
+  id: string; bandId?: string | number; title: string; content: string; author: string; date: string; likes: number; comments: number; tag: string; board: string; img?: string; poll?: PollData;
+  isLikedByCurrentUser?: boolean;
+  authorProfileImageUrl?: string;
+  commentsList?: any[];
 };
 
 const MOCK_POSTS: Record<string, PostData> = {
@@ -56,41 +60,107 @@ export default function PostDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const post = MOCK_POSTS[id as keyof typeof MOCK_POSTS] || MOCK_POSTS['1'];
+  
+  const [post, setPost] = useState<PostData | null>(null);
+  const [loading, setLoading] = useState(true);
   
   const [isLiked, setIsLiked] = useState<boolean>(false);
+  const [commentText, setCommentText] = useState("");
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState<boolean>(false);
   const [selectedUser, setSelectedUser] = useState<{ id: string | number; name: string; image?: string } | null>(null);
-  const [poll, setPoll] = useState<PollData | undefined>(post.poll);
-  
-  const handleVote = (optionId: string) => {
-    if (!poll) return;
-    
-    const newOptions = poll.options.map(opt => {
-      if (opt.id === optionId) {
-        return {
-          ...opt,
-          isVoted: !opt.isVoted,
-          votes: opt.isVoted ? opt.votes - 1 : opt.votes + 1
-        };
-      } else {
-        return {
-          ...opt,
-          isVoted: false,
-          votes: opt.isVoted ? opt.votes - 1 : opt.votes
-        };
-      }
-    });
+  const [poll, setPoll] = useState<PollData | undefined>(undefined);
 
-    const hasVoted = newOptions.some(opt => opt.isVoted);
-    const newTotal = newOptions.reduce((acc, curr) => acc + curr.votes, 0);
+  // API Import 추가
+  const { getBandPostApi, toggleLikeApi, createBandPostCommentApi, votePollApi } = require('@/api/band/bandService');
+
+  useEffect(() => {
+    const fetchPost = async () => {
+      try {
+        const data = await getBandPostApi(id);
+        let boardName = data.boardType;
+        if (data.boardType === 'NOTICE') boardName = '공지사항';
+        if (data.boardType === 'FREE') boardName = '자유게시판';
+        if (data.boardType === 'SCHEDULE') boardName = '합주 일정';
+        if (data.boardType === 'REHEARSAL') boardName = '합주 영상';
+        
+        setPost({
+          id: String(data.id),
+          title: data.title,
+          content: data.content,
+          author: data.authorName || '알 수 없음',
+          date: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : '',
+          likes: data.likeCount || 0, 
+          comments: data.commentCount || 0,
+          tag: data.category || '일반',
+          board: boardName,
+          img: data.mediaType === 'IMAGE' ? data.mediaUrl : undefined,
+          isLikedByCurrentUser: data.isLikedByCurrentUser,
+          authorProfileImageUrl: data.authorProfileImageUrl,
+          commentsList: data.comments || []
+        });
+        setIsLiked(!!data.isLikedByCurrentUser);
+        
+        if (data.poll) {
+          setPoll({
+            ...data.poll,
+            hasVoted: data.poll.myVotedOptionId !== null,
+            options: data.poll.options.map((opt: any) => ({
+              id: String(opt.id),
+              text: opt.content,
+              votes: opt.voteCount,
+              isVoted: opt.id === data.poll.myVotedOptionId
+            }))
+          });
+        }
+      } catch (e) {
+        console.error("Failed to fetch post, falling back to mock", e);
+        const mockPost = MOCK_POSTS[id as keyof typeof MOCK_POSTS] || MOCK_POSTS['1'];
+        setPost(mockPost);
+        setPoll(mockPost.poll);
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    setPoll({
-      ...poll,
-      options: newOptions,
-      totalVotes: newTotal,
-      hasVoted
-    });
+    fetchPost();
+  }, [id]);
+  
+  const handleVote = async (optionId: string) => {
+    if (!poll || !post) return;
+    
+    try {
+      await votePollApi(post.bandId || 1, id, poll.id || 1, optionId);
+      
+      const newOptions = poll.options.map(opt => {
+        if (opt.id === optionId) {
+          return {
+            ...opt,
+            isVoted: !opt.isVoted,
+            votes: opt.isVoted ? opt.votes - 1 : opt.votes + 1
+          };
+        } else {
+          return {
+            ...opt,
+            isVoted: false,
+            votes: opt.isVoted ? opt.votes - 1 : opt.votes
+          };
+        }
+      });
+
+      const hasVoted = newOptions.some(opt => opt.isVoted);
+      const newTotal = newOptions.reduce((acc, curr) => acc + curr.votes, 0);
+      
+      setPoll({
+        ...poll,
+        options: newOptions,
+        totalVotes: newTotal,
+        hasVoted
+      });
+    } catch (e) {
+      console.error("Vote failed", e);
+      alert("투표 처리 중 오류가 발생했습니다.");
+    }
   };
   
   const handleBack = () => {
@@ -98,9 +168,52 @@ export default function PostDetailPage() {
     if (window.history.length > 2) {
       router.back();
     } else {
-      router.push('/community/free');
+      router.push(`/band/${id}/board`);
     }
   };
+
+  const handleToggleLike = async () => {
+    try {
+      const result = await toggleLikeApi(id);
+      setIsLiked(result.isLiked);
+      setPost(prev => prev ? {
+        ...prev,
+        likes: result.isLiked ? prev.likes + 1 : prev.likes - 1,
+        isLikedByCurrentUser: result.isLiked
+      } : prev);
+    } catch (e) {
+      console.error("Failed to toggle like", e);
+    }
+  };
+
+  const handleCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commentText.trim() || isSubmittingComment || !post) return;
+    
+    setIsSubmittingComment(true);
+    try {
+      const newComment = await createBandPostCommentApi(post.bandId || 1, id, { content: commentText.trim() });
+      setPost(prev => prev ? {
+        ...prev,
+        comments: prev.comments + 1,
+        commentsList: [...(prev.commentsList || []), newComment]
+      } : prev);
+      setCommentText("");
+    } catch (e) {
+      console.error("Failed to add comment", e);
+      alert("댓글 작성에 실패했습니다.");
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="min-h-screen bg-background text-white flex items-center justify-center font-bold text-xl">로딩 중...</div>;
+  }
+
+  if (!post) {
+    return <div className="min-h-screen bg-background text-white flex items-center justify-center font-bold text-xl">게시글을 찾을 수 없습니다.</div>;
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-20 w-full">
@@ -129,8 +242,12 @@ export default function PostDetailPage() {
             onClick={() => setSelectedUser({ id: post.author, name: post.author })}
           >
             <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-background overflow-hidden p-0.5 shadow-sm group-hover:border-primary/50 transition-colors">
-              <div className="w-full h-full bg-secondary rounded-full flex items-center justify-center">
-                <User size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
+              <div className="w-full h-full bg-secondary rounded-full flex items-center justify-center overflow-hidden">
+                {post.authorProfileImageUrl ? (
+                  <img src={post.authorProfileImageUrl} alt={post.author} className="w-full h-full object-cover" />
+                ) : (
+                  <User size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
+                )}
               </div>
             </div>
             <div className="flex flex-col">
@@ -140,13 +257,14 @@ export default function PostDetailPage() {
           </div>
         </div>
         
-        <div className="prose prose-invert max-w-none text-slate-300 text-base md:text-lg leading-loose whitespace-pre-wrap mb-12">
-          {post.content}
-        </div>
+        <div 
+          className="prose prose-invert max-w-none text-slate-300 text-base md:text-lg leading-loose whitespace-pre-wrap mb-12"
+          dangerouslySetInnerHTML={{ __html: post.content }}
+        />
         
         {post.img && (
           <div className="mb-12 rounded-2xl overflow-hidden border border-border">
-            <img src={`https://picsum.photos/seed/${post.img}/800/600`} className="w-full h-auto" alt="게시글 첨부" />
+            <img src={post.img.startsWith('http') ? post.img : `https://picsum.photos/seed/${post.img}/800/600`} className="w-full h-auto" alt="게시글 첨부" />
           </div>
         )}
         
@@ -202,14 +320,14 @@ export default function PostDetailPage() {
         
         <div className="flex items-center gap-4 py-4 mb-8">
           <button 
-            onClick={() => setIsLiked(!isLiked)}
+            onClick={handleToggleLike}
             className={cn("flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors", isLiked ? "bg-primary/20 border-primary text-primary" : "bg-secondary border-border text-slate-400 hover:bg-slate-800 hover:text-white")}
           >
             <ThumbsUp size={16} className={isLiked ? "fill-primary" : ""} />
-            <span className="text-sm font-bold">{isLiked ? post.likes + 1 : post.likes}</span>
+            <span className="text-sm font-bold">{post.likes}</span>
           </button>
           <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-secondary border border-border text-slate-400 cursor-default">
-            <MessageSquare size={16} /> 3
+            <MessageSquare size={16} /> {post.comments}
           </button>
         </div>
 
@@ -219,37 +337,59 @@ export default function PostDetailPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="flex gap-4">
-            <div 
-              className="w-8 h-8 rounded-full bg-slate-800 border border-border shrink-0 cursor-pointer hover:border-primary transition-colors"
-              onClick={() => setSelectedUser({ id: '음악하는사람', name: '음악하는사람' })}
-            />
-            <div className="flex-1">
-              <div className="flex justify-between items-start mb-1">
+          {post.commentsList && post.commentsList.length > 0 ? (
+            post.commentsList.map((c: any) => (
+              <div key={c.id} className="flex gap-4">
                 <div 
-                  className="flex items-center gap-2 cursor-pointer group"
-                  onClick={() => setSelectedUser({ id: '음악하는사람', name: '음악하는사람' })}
+                  className="w-8 h-8 rounded-full bg-slate-800 border border-border shrink-0 cursor-pointer hover:border-primary transition-colors overflow-hidden"
+                  onClick={() => setSelectedUser({ id: c.authorId, name: c.authorName, image: c.authorProfileImageUrl })}
                 >
-                  <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">음악하는사람</span>
-                  <span className="text-[10px] text-slate-500">방금 전</span>
+                  {c.authorProfileImageUrl ? (
+                    <img src={c.authorProfileImageUrl} alt={c.authorName} className="w-full h-full object-cover" />
+                  ) : (
+                     <div className="w-full h-full flex items-center justify-center"><User size={14} className="text-slate-400" /></div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-start mb-1">
+                    <div 
+                      className="flex items-center gap-2 cursor-pointer group"
+                      onClick={() => setSelectedUser({ id: c.authorId, name: c.authorName, image: c.authorProfileImageUrl })}
+                    >
+                      <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">{c.authorName}</span>
+                      <span className="text-[10px] text-slate-500">{new Date(c.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-300">{c.content}</p>
                 </div>
               </div>
-              <p className="text-sm text-slate-300">정말 멋지네요! 응원합니다 🙏</p>
+            ))
+          ) : (
+            <div className="text-center py-8 text-slate-500 text-sm">
+              등록된 댓글이 없습니다. 가장 먼저 댓글을 남겨보세요!
             </div>
-          </div>
+          )}
         </div>
 
         <div className="mt-8 flex gap-3">
-            <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 border border-border mt-1 shadow-inner overflow-hidden" />
+            <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 border border-border mt-1 shadow-inner overflow-hidden flex items-center justify-center">
+              <User size={14} className="text-slate-400" />
+            </div>
             <div className="flex-1 border border-border rounded-xl bg-background overflow-hidden focus-within:border-primary transition-colors pr-2">
               <textarea 
                 rows={2} 
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
                 className="w-full bg-transparent text-sm text-white resize-none p-4 placeholder-slate-500 outline-none" 
                 placeholder="댓글을 남겨보세요..."
               ></textarea>
               <div className="flex justify-end pb-2">
-                <button className="bg-primary hover:bg-indigo-600 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors">
-                  등록
+                <button 
+                  onClick={handleCommentSubmit}
+                  disabled={isSubmittingComment || !commentText.trim()}
+                  className="bg-primary hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors"
+                >
+                  {isSubmittingComment ? "등록 중..." : "등록"}
                 </button>
               </div>
             </div>

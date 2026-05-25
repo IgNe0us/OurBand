@@ -280,4 +280,87 @@ public class UserController {
         return ResponseEntity.ok().build();
     }
 
+    // ========================================
+    // 💡 팔로워 / 팔로잉 목록 API
+    // ========================================
+
+    /**
+     * 나를 팔로우하는 사람 목록 (팔로워 리스트)
+     */
+    @GetMapping("/followers")
+    public ResponseEntity<?> getFollowers(
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        if (accessToken == null || accessToken.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "로그인이 필요합니다."));
+        }
+        try {
+            Long currentUserId = jwtUtil.getUserId(accessToken);
+            List<com.ourband.api.domain.dto.user.FollowUserDTO> followers = userService.getFollowers(currentUserId, currentUserId);
+            return ResponseEntity.ok(followers);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "유효하지 않은 토큰입니다."));
+        }
+    }
+
+    /**
+     * 내가 팔로우하는 사람 목록 (팔로잉 리스트)
+     */
+    @GetMapping("/followings")
+    public ResponseEntity<?> getFollowings(
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        if (accessToken == null || accessToken.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "로그인이 필요합니다."));
+        }
+        try {
+            Long currentUserId = jwtUtil.getUserId(accessToken);
+            List<com.ourband.api.domain.dto.user.FollowUserDTO> followings = userService.getFollowings(currentUserId, currentUserId);
+            return ResponseEntity.ok(followings);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "유효하지 않은 토큰입니다."));
+        }
+    }
+
+    /**
+     * 팔로우 / 언팔로우 토글 API
+     */
+    @PostMapping("/follow/{targetUserId}")
+    public ResponseEntity<?> toggleFollow(
+            @CookieValue(value = "access_token") String accessToken,
+            @PathVariable Long targetUserId) {
+        try {
+            Long currentUserId = jwtUtil.getUserId(accessToken);
+            boolean isNowFollowing = userService.toggleFollow(currentUserId, targetUserId);
+            return ResponseEntity.ok(Map.of("isFollowing", isNowFollowing));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    // ========================================
+    // 💡 밴드 창설 API
+    // ========================================
+
+    /**
+     * 밴드 생성 API
+     * 프론트에서 Cloudflare 업로드 후 로고 URL과 함께 밴드 정보를 전달합니다.
+     */
+    @PostMapping("/band")
+    public ResponseEntity<?> createBand(
+            @CookieValue(value = "access_token") String accessToken,
+            @RequestBody com.ourband.api.domain.dto.user.BandCreateRequestDTO request) {
+        try {
+            Long currentUserId = jwtUtil.getUserId(accessToken);
+            com.ourband.api.domain.dto.user.BandSimpleDTO result = userService.createBand(currentUserId, request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
 }

@@ -42,14 +42,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isLoginPage = pathname?.startsWith('/login');
   const isRegistPage = pathname?.startsWith('/register');
 
+  const isHideSidebar = isAdminPage || isLoginPage || isRegistPage;
+
   return (
     <LayoutContext.Provider value={{ openMenu: () => setIsMenuOpen(true) }}>
     <div className="flex bg-background min-h-screen w-full font-sans text-slate-100">
-      {!isAdminPage && <DesktopSidebar />}
-      {!isAdminPage && <MobileDrawer isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />}
+      {!isHideSidebar && <DesktopSidebar />}
+      {!isHideSidebar && <MobileDrawer isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />}
 
       {/* Global Fixed Notification Bell */}
-      {!isAdminPage && !isLoginPage && !isRegistPage && (
+      {!isHideSidebar && (
       <div className="fixed top-4 right-4 md:top-6 md:right-8 z-50">
         <div className="relative">
           <button 
@@ -114,11 +116,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
       )}
 
-      <div className={`flex-1 flex flex-col min-h-screen w-full focus:outline-none ${!isAdminPage ? 'md:pl-64 lg:pl-72' : ''}`}>
-        <main className={`flex-1 w-full mx-auto overflow-x-hidden ${!isAdminPage ? 'max-w-screen-2xl pb-16 md:pb-8' : ''}`}>
+      <div className={`flex-1 flex flex-col min-h-screen w-full focus:outline-none ${!isHideSidebar ? 'md:pl-64 lg:pl-72' : ''}`}>
+        <main className={`flex-1 w-full mx-auto overflow-x-hidden ${!isHideSidebar ? 'max-w-screen-2xl pb-16 md:pb-8' : ''}`}>
           {children}
         </main>
-        {!isAdminPage && <BottomNav />}
+        {!isHideSidebar && <BottomNav />}
       </div>
     </div>
     </LayoutContext.Provider>

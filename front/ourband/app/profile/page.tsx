@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { LayoutContextType } from "@/components/layout/AppLayout";
 import { AnimatePresence, motion } from "motion/react";
-import { addFavoriteMusicApi, addGearApi, addHistoryApi, deleteFavoriteMusicApi, deleteGearApi, deleteHistoryApi, getUserInfoApi, logoutApi, updateProfileApi, updateProfileImageApi } from "@/api/account/userService";
+import { addFavoriteMusicApi, addGearApi, addHistoryApi, deleteFavoriteMusicApi, deleteGearApi, deleteHistoryApi, getUserInfoApi, logoutApi, updateProfileApi, updateProfileImageApi, getFollowersApi, getFollowingsApi, toggleFollowApi, type FollowUser } from "@/api/account/userService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
 
 interface Band {
@@ -73,20 +73,10 @@ export default function ProfilePage() {
   const [historyMediaType, setHistoryMediaType] = useState<"IMAGE" | "VIDEO">("IMAGE");
   const [isUploading, setIsUploading] = useState(false);
   
-  // Follow Mock Data
-  const mockFollowers = [
-    { id: 1, name: "드럼머신", imageSeed: "drum", bio: "매일 드럼 칩니다", isFollowing: true },
-    { id: 2, name: "베이스천재", imageSeed: "bass", bio: "슬랩 장인", isFollowing: false },
-    { id: 3, name: "보컬지인", imageSeed: "vocal", bio: "R&B 좋아해요", isFollowing: true },
-    { id: 4, name: "기타히어로", imageSeed: "guitar", bio: "펜더 스트라토캐스터 오너", isFollowing: true },
-    { id: 5, name: "재즈피아노", imageSeed: "piano", bio: "스탠다드 재즈", isFollowing: false },
-  ];
-
-  const mockFollowing = [
-    { id: 1, name: "드럼머신", imageSeed: "drum", bio: "매일 드럼 칩니다", isFollowing: true },
-    { id: 3, name: "보컬지인", imageSeed: "vocal", bio: "R&B 좋아해요", isFollowing: true },
-    { id: 4, name: "기타히어로", imageSeed: "guitar", bio: "펜더 스트라토캐스터 오너", isFollowing: true },
-  ];
+  // 💡 팔로워/팔로잉 실제 DB 데이터 state
+  const [followerList, setFollowerList] = useState<FollowUser[]>([]);
+  const [followingList, setFollowingList] = useState<FollowUser[]>([]);
+  const [followLoading, setFollowLoading] = useState(false);
 
   const [historyList, setHistoryList] = useState([
     { id: 1, title: "홍대 첫 라이브", desc: "떨렸지만 좋았습니다.", type: "video" },
@@ -321,6 +311,56 @@ export default function ProfilePage() {
     navigate("/login");
   };
 
+  // 💡 팔로워/팔로잉 모달 열릴 때 실제 DB에서 데이터 가져오기
+  const handleOpenFollowModal = async (type: "follower" | "following") => {
+    setActiveFollowModal(type);
+    setFollowLoading(true);
+    try {
+      if (type === "follower") {
+        const data = await getFollowersApi();
+        setFollowerList(data);
+      } else {
+        const data = await getFollowingsApi();
+        setFollowingList(data);
+      }
+    } catch (error) {
+      console.error(`${type} 목록 로드 실패:`, error);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  // 💡 팔로우/언팔로우 토글 핸들러
+  const handleToggleFollow = async (targetUserId: number) => {
+    try {
+      const result = await toggleFollowApi(targetUserId);
+      
+      // 현재 열려있는 목록의 isFollowing 상태를 즉시 갱신
+      const updateList = (list: FollowUser[]) =>
+        list.map(user =>
+          user.userId === targetUserId
+            ? { ...user, isFollowing: result.isFollowing, following: result.isFollowing }
+            : user
+        );
+      setFollowerList(prev => updateList(prev));
+      setFollowingList(prev => updateList(prev));
+
+      // 프로필의 팔로워/팔로잉 카운트도 즉시 반영
+      setProfileData(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          followingCount: result.isFollowing
+            ? prev.followingCount + 1
+            : prev.followingCount - 1
+        };
+      });
+    } catch (error) {
+      console.error("팔로우 토글 실패:", error);
+      alert("팔로우 처리에 실패했습니다.");
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -465,13 +505,13 @@ export default function ProfilePage() {
               </div>
               <div className="space-y-3">
                 {profileData.bands.map((band) => (
-                <div className="flex items-center gap-4 p-4 rounded-2xl bg-secondary border border-border hover:border-primary/50 transition-colors cursor-pointer group">
+                <div key={band.bandId} className="flex items-center gap-4 p-4 rounded-2xl bg-secondary border border-border hover:border-primary/50 transition-colors cursor-pointer group">
                   <div className="w-12 h-12 rounded-xl border-2 border-background overflow-hidden bg-slate-800 relative shrink-0">
                      <img src={band.logoImageUrl || "https://picsum.photos/seed/bandlogo/100/100"} className="w-full h-full object-cover" alt="Band" referrerPolicy="no-referrer" />
                   </div>
-                  <div key={band.bandId} className="flex flex-col flex-1">
+                  <div className="flex flex-col flex-1">
                     <span className="text-white font-bold text-sm group-hover:text-primary transition-colors">{band.bandName}</span>
-                    <span className="text-xs text-slate-400 mt-0.5">{band.role} (결성 {band.createdAt})</span>
+                    <span className="text-xs text-slate-400 mt-0.5">{band.role} (결성 {band.createdAt ? new Date(band.createdAt).toLocaleDateString('ko-KR') : ""})</span>
                   </div>
                 </div>
                 ))}
@@ -489,11 +529,11 @@ export default function ProfilePage() {
                  <div className="text-2xl font-black text-white mb-1">12</div>
                  <div className="text-xs font-medium text-slate-500">참여 잼</div>
               </div> */}
-              <div className="border-x border-border cursor-pointer hover:bg-white/5 transition-colors py-2 rounded-lg" onClick={() => setActiveFollowModal("follower")}>
+              <div className="border-x border-border cursor-pointer hover:bg-white/5 transition-colors py-2 rounded-lg" onClick={() => handleOpenFollowModal("follower")}>
                  <div className="text-2xl font-black text-white mb-1">{profileData.followerCount}</div>
                  <div className="text-xs font-medium text-slate-500">팔로워</div>
               </div>
-              <div className="border-x border-border cursor-pointer hover:bg-white/5 transition-colors py-2 rounded-lg" onClick={() => setActiveFollowModal("following")}>
+              <div className="border-x border-border cursor-pointer hover:bg-white/5 transition-colors py-2 rounded-lg" onClick={() => handleOpenFollowModal("following")}>
                  <div className="text-2xl font-black text-white mb-1">{profileData.followingCount}</div>
                  <div className="text-xs font-medium text-slate-500">팔로잉</div>
               </div>
@@ -952,53 +992,70 @@ export default function ProfilePage() {
               <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
                 <h3 className="font-bold text-white text-lg">
                   {activeFollowModal === "follower" ? "팔로워" : "팔로잉"} 
-                  <span className="text-primary ml-2">{activeFollowModal === "follower" ? mockFollowers.length : mockFollowing.length}</span>
+                  <span className="text-primary ml-2">{activeFollowModal === "follower" ? followerList.length : followingList.length}</span>
                 </h3>
                 <button onClick={() => setActiveFollowModal(null)} className="p-1 text-slate-400 hover:text-white"><X size={24} /></button>
               </div>
               
               <div className="flex-1 overflow-y-auto p-2">
-                {(activeFollowModal === "follower" ? mockFollowers : mockFollowing).map((user, idx) => (
-                  <div 
-                    key={`follow-user-${user.id}-${idx}`} 
-                    className="flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition-colors cursor-pointer group"
-                    onClick={() => setSelectedUser(user)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-800 shrink-0 border border-border">
-                        <img src={`https://picsum.photos/seed/${user.imageSeed}/100/100`} alt={user.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-bold text-white text-sm group-hover:text-primary transition-colors">{user.name}</span>
-                        <span className="text-xs text-slate-400 line-clamp-1">{user.bio}</span>
-                      </div>
-                    </div>
-                    {/* Follow/Unfollow Button */}
-                    <button 
-                      className={cn(
-                        "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5",
-                        user.isFollowing 
-                          ? "bg-slate-800 text-slate-300 hover:bg-red-500/20 hover:text-red-500 border border-transparent hover:border-red-500/50"
-                          : "bg-primary text-white hover:bg-indigo-600 shadow-md shadow-primary/20"
-                      )}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        alert((user.isFollowing ? "언팔로우" : "팔로우") + " 클릭: " + user.name);
-                      }}
-                    >
-                      {user.isFollowing ? (
-                        <>
-                          <Check size={14} className="group-hover:hidden" />
-                          <UserMinus size={14} className="hidden group-hover:block" />
-                          <span className="group-hover:hidden">Following</span>
-                          <span className="hidden group-hover:block">Unfollow</span>
-                        </>
-                      ) : (
-                        "Follow"
-                      )}
-                    </button>
+                {followLoading ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                    <div className="w-8 h-8 border-2 border-slate-600 border-t-primary rounded-full animate-spin mb-4" />
+                    <span className="text-sm font-medium">불러오는 중...</span>
                   </div>
-                ))}
+                ) : (activeFollowModal === "follower" ? followerList : followingList).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                    <Users size={32} className="mb-3 opacity-30" />
+                    <p className="font-medium text-sm">
+                      {activeFollowModal === "follower" ? "아직 팔로워가 없습니다." : "아직 팔로잉하는 사람이 없습니다."}
+                    </p>
+                  </div>
+                ) : (
+                  (activeFollowModal === "follower" ? followerList : followingList).map((user, idx) => (
+                    <div 
+                      key={`follow-user-${user.userId}-${idx}`} 
+                      className="flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition-colors cursor-pointer group"
+                      onClick={() => setSelectedUser({ id: user.userId, name: user.nickname, imageSeed: String(user.userId) })}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-800 shrink-0 border border-border">
+                          <img 
+                            src={user.profilePictureUrl || `https://picsum.photos/seed/user${user.userId}/100/100`} 
+                            alt={user.nickname} 
+                            referrerPolicy="no-referrer" 
+                            className="w-full h-full object-cover" 
+                          />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-white text-sm group-hover:text-primary transition-colors">{user.nickname}</span>
+                          <span className="text-xs text-slate-400 line-clamp-1">{user.bio || user.instrument || ""}</span>
+                        </div>
+                      </div>
+                      {/* Follow/Unfollow Button */}
+                      <button 
+                        className={cn(
+                          "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 shrink-0",
+                          (user.isFollowing || (user as any).following)
+                            ? "bg-slate-800 text-slate-300 hover:bg-red-500/20 hover:text-red-500 border border-transparent hover:border-red-500/50"
+                            : "bg-primary text-white hover:bg-indigo-600 shadow-md shadow-primary/20"
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleFollow(user.userId);
+                        }}
+                      >
+                        {(user.isFollowing || (user as any).following) ? (
+                          <>
+                            <Check size={14} />
+                            <span>Following</span>
+                          </>
+                        ) : (
+                          "Follow"
+                        )}
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </motion.div>
           </motion.div>
@@ -1033,7 +1090,7 @@ export default function ProfilePage() {
         onClose={() => setSelectedUser(null)}
         userId={selectedUser?.id}
         userName={selectedUser?.name}
-        userImage={selectedUser ? `https://picsum.photos/seed/${selectedUser.imageSeed}/200/200` : undefined}
+        userImage={selectedUser ? (selectedUser.imageSeed?.startsWith('http') ? selectedUser.imageSeed : `https://picsum.photos/seed/user${selectedUser.id}/200/200`) : undefined}
       />
     </div>
   );

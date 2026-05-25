@@ -3,6 +3,7 @@ package com.ourband.api.domain.repository;
 import com.ourband.api.domain.model.Follow;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface FollowRepository extends JpaRepository<Follow, Long> {
@@ -18,4 +19,10 @@ public interface FollowRepository extends JpaRepository<Follow, Long> {
     
     // 4. 언팔로우 할 때 사용 (나와 상대방 ID로 팔로우 기록 삭제)
     void deleteByFollowerIdAndFollowingId(Long followerId, Long followingId);
+
+    // 5. 나를 팔로우하는 사람 목록 (팔로워 리스트)
+    List<Follow> findByFollowingId(Long followingId);
+
+    // 6. 내가 팔로우하는 사람 목록 (팔로잉 리스트)
+    List<Follow> findByFollowerId(Long followerId);
 }

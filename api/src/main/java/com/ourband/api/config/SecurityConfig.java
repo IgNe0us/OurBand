@@ -49,11 +49,11 @@ public class SecurityConfig {
             //     .anyRequest().authenticated()
             // );
             .authorizeHttpRequests(auth -> auth
-            .requestMatchers(
-                "/api/v1/users/login",
-                "/api/v1/users/register"
-            ).permitAll()
-
+                .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers(
+                    "/api/v1/users/login",
+                    "/api/v1/users/register"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
 

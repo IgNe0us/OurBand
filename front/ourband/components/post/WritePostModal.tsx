@@ -1,7 +1,7 @@
 "use client";
 // @ts-nocheck
 import { useState, useRef, useEffect } from "react";
-import { X, Image as ImageIcon, Palette, BarChart2, Plus, Trash2, Bold, Italic, Underline, ChevronDown } from "lucide-react";
+import { X, Image as ImageIcon, Palette, BarChart2, Plus, Trash2, Bold, Italic, Underline, ChevronDown, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";;
 
@@ -10,6 +10,14 @@ interface WritePostModalProps {
   onClose: () => void;
   defaultBoard?: string;
   isLeader?: boolean;
+  initialData?: {
+    id?: string | number;
+    boardType: string;
+    category: string;
+    title: string;
+    content: string;
+  };
+  onSubmit?: (data: { id?: string | number; boardType: string; category: string; title: string; content: string; files?: File[]; poll?: any }) => Promise<void>;
 }
 
 const CATEGORIES: Record<string, string[]> = {
@@ -24,9 +32,10 @@ const CATEGORIES: Record<string, string[]> = {
 // Map actual option names to internal board keys if needed, but we can just use the labels directly
 const BOARD_OPTIONS = ["자유게시판", "공지사항", "합주 일정"];
 
-export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시판", isLeader = false }: WritePostModalProps) {
+export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시판", isLeader = false, initialData, onSubmit }: WritePostModalProps) {
   const [board, setBoard] = useState(defaultBoard);
   const [category, setCategory] = useState(CATEGORIES[defaultBoard]?.[0] || "일반");
+  const [title, setTitle] = useState("");
   const [usePoll, setUsePoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [pollTitle, setPollTitle] = useState("");
@@ -36,6 +45,7 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
   const [files, setFiles] = useState<File[]>([]);
   const [isBoardDropdownOpen, setIsBoardDropdownOpen] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const boardDropdownRef = useRef<HTMLDivElement>(null);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
@@ -55,10 +65,29 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
 
   useEffect(() => {
     if (isOpen) {
-      setBoard(defaultBoard);
-      setCategory(CATEGORIES[defaultBoard]?.[0] || "일반");
+      if (initialData) {
+        let boardName = "자유게시판";
+        if (initialData.boardType === "NOTICE") boardName = "공지사항";
+        else if (initialData.boardType === "SCHEDULE") boardName = "합주 일정";
+        else if (initialData.boardType === "REHEARSAL") boardName = "합주";
+
+        setBoard(boardName);
+        setCategory(initialData.category || (CATEGORIES[boardName]?.[0] || "일반"));
+        setTitle(initialData.title);
+        if (editorRef.current) {
+          editorRef.current.innerHTML = initialData.content;
+        }
+      } else {
+        setBoard(defaultBoard);
+        setCategory(CATEGORIES[defaultBoard]?.[0] || "일반");
+        setTitle("");
+        setFiles([]);
+        if (editorRef.current) {
+          editorRef.current.innerHTML = "";
+        }
+      }
     }
-  }, [isOpen, defaultBoard]);
+  }, [isOpen, defaultBoard, initialData]);
 
   const handleBoardChange = (newBoard: string) => {
     setBoard(newBoard);
@@ -85,6 +114,36 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
     // Basic implementation of text formatting
     document.execCommand(command, false, value);
     editorRef.current?.focus();
+  };
+
+  const handlePublish = async () => {
+    if (!title.trim()) return alert("제목을 입력해주세요!");
+    const content = editorRef.current?.innerHTML || "";
+    if (!content.trim() || content === "<br>") return alert("내용을 입력해주세요!");
+
+    setIsSubmitting(true);
+    try {
+      if (onSubmit) {
+        await onSubmit({
+          id: initialData?.id,
+          boardType: board,
+          category,
+          title: title.trim(),
+          content,
+          files: files.length > 0 ? files : undefined,
+          poll: usePoll && pollTitle.trim() ? {
+            title: pollTitle.trim(),
+            options: pollOptions.filter(o => o.trim() !== "")
+          } : undefined
+        });
+      }
+      onClose();
+    } catch (err) {
+      console.error("Failed to publish post:", err);
+      alert("게시글 등록에 실패했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -202,6 +261,8 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
               <input
                 type="text"
                 placeholder="제목을 입력하세요"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 className="w-full bg-transparent border-b border-border py-3 text-lg text-white placeholder-slate-500 focus:outline-none focus:border-primary transition-colors font-bold"
               />
 
@@ -305,11 +366,26 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
 
             {/* Footer */}
             <div className="p-4 border-t border-border bg-background shrink-0 flex justify-end gap-3 pb-8 md:pb-4">
-              <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-secondary transition-colors">
+              <button 
+                onClick={onClose} 
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-secondary transition-colors disabled:opacity-50"
+              >
                 취소
               </button>
-              <button onClick={() => { alert('게시글이 성공적으로 등록되었습니다.'); onClose(); }} className="px-6 py-2.5 rounded-xl text-sm font-bold bg-primary hover:bg-indigo-600 text-white shadow-[0_0_15px_rgba(99,102,241,0.3)] transition-all">
-                등록
+              <button 
+                onClick={handlePublish} 
+                disabled={isSubmitting}
+                className="px-6 py-2.5 rounded-xl text-sm font-bold bg-primary hover:bg-indigo-600 text-white shadow-[0_0_15px_rgba(99,102,241,0.3)] transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="animate-spin" size={16} />
+                    등록 중...
+                  </>
+                ) : (
+                  "등록"
+                )}
               </button>
             </div>
           </motion.div>
