@@ -9,4 +9,5 @@ import lombok.Setter;
 @NoArgsConstructor
 public class BandPostCommentCreateRequestDTO {
     private String content;
+    private Long parentId;
 }

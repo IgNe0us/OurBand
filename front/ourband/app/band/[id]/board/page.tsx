@@ -3,7 +3,7 @@
 // @ts-nocheck
 import { EditBandProfileModal } from "@/components/band/EditBandProfileModal";
 import { type BandProfileData } from "@/api/band/bandService";
-import { VideoPostModal, type VideoPost } from "@/components/band/VideoPostModal";
+import { VideoPostModal } from "@/components/band/VideoPostModal";
 import { useContext, useEffect, useState } from "react";
 import { ReportModal } from "@/components/common/ReportModal";
 import { WritePostModal } from "@/components/post/WritePostModal";
@@ -12,7 +12,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { MessageSquare, Calendar, Menu, Edit3, Flag, Settings, Play, Heart, Trash2, Users, Loader2, ThumbsUp, BarChart2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
-import { getBandProfileApi, updateBandProfileApi, getBandPostsApi, createBandPostApi, updateBandPostApi, deleteBandPostApi, type BandPostData } from "@/api/band/bandService";
+import { getBandProfileApi, updateBandProfileApi, getBandPostsApi, getBandPostApi, createBandPostApi, updateBandPostApi, deleteBandPostApi, type BandPostData } from "@/api/band/bandService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
 
 const getFirstImageFromHtml = (htmlString: string) => {
@@ -47,7 +47,7 @@ export default function BandIdDynamicBoardPage() {
   const [postToEdit, setPostToEdit] = useState<BandPostData | null>(null);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [selectedVideoPost, setSelectedVideoPost] = useState<VideoPost | null>(null);
+  const [selectedVideoPostId, setSelectedVideoPostId] = useState<string | number | null>(null);
 
   // 실시간 데이터 States
   const [bandProfile, setBandProfile] = useState<BandProfileData | null>(null);
@@ -180,7 +180,7 @@ export default function BandIdDynamicBoardPage() {
         alert("게시글이 성공적으로 수정되었습니다! 📝");
       } else {
         // 게시글 생성
-        await createBandPostApi(id, {
+        const newPost = await createBandPostApi(id, {
           boardType,
           category: postData.category,
           title: postData.title,
@@ -190,7 +190,14 @@ export default function BandIdDynamicBoardPage() {
           scheduleDate,
           poll: postData.poll
         });
-        alert("게시글이 성공적으로 등록되었습니다! 📝");
+        if (boardType === "REHEARSAL") {
+          setIsWriteModalOpen(false);
+          if (newPost.id) setSelectedVideoPostId(newPost.id);
+          fetchPostsData();
+        } else {
+          navigate(`/post/${newPost.id}`);
+        }
+        return;
       }
 
       setPostToEdit(null);
@@ -375,13 +382,7 @@ export default function BandIdDynamicBoardPage() {
                 {posts.map((post) => (
                   <div 
                     key={post.id} 
-                    onClick={() => setSelectedVideoPost({
-                      id: String(post.id!),
-                      title: post.title,
-                      date: post.createdAt ? new Date(post.createdAt).toLocaleDateString() : "",
-                      thumbnail: post.mediaUrl || "https://picsum.photos/seed/oasis1/800/450",
-                      description: post.content
-                    })}
+                    onClick={() => setSelectedVideoPostId(post.id!)}
                     className="bg-secondary/40 border border-border rounded-2xl overflow-hidden hover:border-primary/50 transition-all duration-300 cursor-pointer group flex flex-col shadow-lg"
                   >
                     <div className="aspect-video relative overflow-hidden bg-slate-800 shrink-0">
@@ -435,9 +436,9 @@ export default function BandIdDynamicBoardPage() {
               </div>
             ) : (
               posts.map((post) => {
-                const isNotice = post.boardType === "NOTICE";
-                const isFree = post.boardType === "FREE";
-                const isSchedule = post.boardType === "SCHEDULE";
+                const isNotice = post.boardType === "NOTICE" || post.boardType === "공지사항";
+                const isFree = post.boardType === "FREE" || post.boardType === "자유게시판";
+                const isSchedule = post.boardType === "SCHEDULE" || post.boardType === "합주 일정" || post.boardType === "합주";
                 
                 if (isNotice && (activeTab === "전체" || activeTab === "공지사항")) {
                   return (
@@ -450,7 +451,22 @@ export default function BandIdDynamicBoardPage() {
                         <div className="flex items-center gap-1">
                           {post.authorId === currentUserId && (
                             <button 
-                              onClick={(e) => { e.stopPropagation(); setPostToEdit(post); setIsWriteModalOpen(true); }}
+                              onClick={async (e) => { 
+                                e.stopPropagation(); 
+                                try {
+                                  const fullPost = await getBandPostApi(post.id!);
+                                  setPostToEdit({
+                                    ...post,
+                                    content: fullPost.content,
+                                    poll: fullPost.poll,
+                                    mediaUrl: fullPost.mediaUrl,
+                                    mediaType: fullPost.mediaType
+                                  });
+                                  setIsWriteModalOpen(true);
+                                } catch (err) {
+                                  alert("게시글 정보를 불러오는 데 실패했습니다.");
+                                }
+                              }}
                               className="text-slate-600 hover:text-primary transition-colors p-1"
                               title="수정하기"
                             >
@@ -530,7 +546,22 @@ export default function BandIdDynamicBoardPage() {
                         <div className="flex items-center gap-1">
                           {post.authorId === currentUserId && (
                             <button 
-                              onClick={(e) => { e.stopPropagation(); setPostToEdit(post); setIsWriteModalOpen(true); }}
+                              onClick={async (e) => { 
+                                e.stopPropagation(); 
+                                try {
+                                  const fullPost = await getBandPostApi(post.id!);
+                                  setPostToEdit({
+                                    ...post,
+                                    content: fullPost.content,
+                                    poll: fullPost.poll,
+                                    mediaUrl: fullPost.mediaUrl,
+                                    mediaType: fullPost.mediaType
+                                  });
+                                  setIsWriteModalOpen(true);
+                                } catch (err) {
+                                  alert("게시글 정보를 불러오는 데 실패했습니다.");
+                                }
+                              }}
                               className="text-slate-600 hover:text-primary transition-colors p-1"
                               title="수정하기"
                             >
@@ -610,7 +641,22 @@ export default function BandIdDynamicBoardPage() {
                         <div className="flex items-center gap-1">
                           {post.authorId === currentUserId && (
                             <button 
-                              onClick={(e) => { e.stopPropagation(); setPostToEdit(post); setIsWriteModalOpen(true); }}
+                              onClick={async (e) => { 
+                                e.stopPropagation(); 
+                                try {
+                                  const fullPost = await getBandPostApi(post.id!);
+                                  setPostToEdit({
+                                    ...post,
+                                    content: fullPost.content,
+                                    poll: fullPost.poll,
+                                    mediaUrl: fullPost.mediaUrl,
+                                    mediaType: fullPost.mediaType
+                                  });
+                                  setIsWriteModalOpen(true);
+                                } catch (err) {
+                                  alert("게시글 정보를 불러오는 데 실패했습니다.");
+                                }
+                              }}
                               className="text-slate-600 hover:text-primary transition-colors p-1"
                               title="수정하기"
                             >
@@ -713,9 +759,10 @@ export default function BandIdDynamicBoardPage() {
 
       {/* Video Post Modal */}
       <VideoPostModal
-        isOpen={!!selectedVideoPost}
-        onClose={() => setSelectedVideoPost(null)}
-        post={selectedVideoPost}
+        isOpen={!!selectedVideoPostId}
+        onClose={() => setSelectedVideoPostId(null)}
+        postId={selectedVideoPostId}
+        bandId={id}
       />
 
       {/* Edit Profile Modal */}

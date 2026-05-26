@@ -3,18 +3,16 @@ package com.ourband.api.domain.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "band_post_comments")
+@Table(name = "community_polls")
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class BandPostComment {
+public class CommunityPoll {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,20 +21,14 @@ public class BandPostComment {
     @Column(name = "post_id", nullable = false)
     private Long postId;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @Column(nullable = false, length = 255)
+    private String title;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String content;
+    @Column(name = "is_multiple_choice", nullable = false)
+    @Builder.Default
+    private Boolean isMultipleChoice = false;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    @Column(name = "parent_id")
-    private Long parentId;
 }

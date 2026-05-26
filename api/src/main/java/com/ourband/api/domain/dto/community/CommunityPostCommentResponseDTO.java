@@ -1,4 +1,4 @@
-package com.ourband.api.domain.dto.user;
+package com.ourband.api.domain.dto.community;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -11,15 +11,15 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class BandPostCommentResponseDTO {
+public class CommunityPostCommentResponseDTO {
     private Long id;
     private Long postId;
-    private Long authorId;
+    private Long userId;
     private String authorName;
     private String authorProfileImageUrl;
     private String content;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Long parentId;
-    private List<BandPostCommentResponseDTO> replies;
+    private List<CommunityPostCommentResponseDTO> replies;
 }

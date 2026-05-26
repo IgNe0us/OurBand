@@ -4,17 +4,16 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "band_post_comments")
+@Table(name = "community_post_comments")
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class BandPostComment {
+public class CommunityPostComment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,7 +25,10 @@ public class BandPostComment {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(name = "parent_id")
+    private Long parentId;
+
+    @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
 
     @CreationTimestamp
@@ -36,7 +38,4 @@ public class BandPostComment {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-    @Column(name = "parent_id")
-    private Long parentId;
 }

@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Image as ImageIcon, Palette, BarChart2, Plus, Trash2, Bold, Italic, Underline, ChevronDown, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { cn } from "@/lib/utils";;
+import { cn } from "@/lib/utils";
 
-interface WritePostModalProps {
+interface CommunityWritePostModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultBoard?: string;
@@ -14,30 +14,31 @@ interface WritePostModalProps {
     id?: string | number;
     boardType: string;
     category: string;
+    part?: string;
     title: string;
     content: string;
     mediaUrl?: string;
     mediaType?: string;
     poll?: any;
   };
-  onSubmit?: (data: { id?: string | number; boardType: string; category: string; title: string; content: string; files?: File[]; removeMedia?: boolean; poll?: any }) => Promise<void>;
+  onSubmit?: (data: { id?: string | number; boardType: string; category: string; part?: string; title: string; content: string; files?: File[]; poll?: any; removeMedia?: boolean }) => Promise<void>;
 }
 
 const CATEGORIES: Record<string, string[]> = {
   "자유게시판": ["일반", "잡담", "질문", "정보", "장비"],
   "고민상담": ["일반", "밴드생활", "진로", "기타"],
   "악기자랑": ["일반", "자랑", "언박싱"],
-  "공지사항": ["필독", "일반공지"],
-  "합주 일정": ["일정", "변경안내", "장소공지"],
-  "합주": ["합주 완료", "세트리스트"]
+  "구인구직": ["멤버구함", "밴드구함"],
+  "합주실/공연장": ["합주실", "공연장"],
+  "중고장터": ["팝니다", "삽니다"]
 };
 
-// Map actual option names to internal board keys if needed, but we can just use the labels directly
-const BOARD_OPTIONS = ["자유게시판", "공지사항", "합주 일정", "합주"];
+const PARTS = ["보컬", "기타", "베이스", "드럼", "건반", "작곡/미디", "그외"];
 
-export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시판", isLeader = false, initialData, onSubmit }: WritePostModalProps) {
+export function CommunityWritePostModal({ isOpen, onClose, defaultBoard = "자유게시판", isLeader = false, initialData, onSubmit }: CommunityWritePostModalProps) {
   const [board, setBoard] = useState(defaultBoard);
   const [category, setCategory] = useState(CATEGORIES[defaultBoard]?.[0] || "일반");
+  const [part, setPart] = useState(PARTS[0]);
   const [title, setTitle] = useState("");
   const [usePoll, setUsePoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
@@ -46,22 +47,22 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
   const editorRef = useRef<HTMLDivElement>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
-  const [isBoardDropdownOpen, setIsBoardDropdownOpen] = useState(false);
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [existingMedia, setExistingMedia] = useState<{ url: string; type: string } | null>(null);
+  const [existingMedia, setExistingMedia] = useState<{ url: string, type: string } | null>(null);
   const [removeMedia, setRemoveMedia] = useState(false);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [isPartDropdownOpen, setIsPartDropdownOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const boardDropdownRef = useRef<HTMLDivElement>(null);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
+  const partDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (boardDropdownRef.current && !boardDropdownRef.current.contains(event.target as Node)) {
-        setIsBoardDropdownOpen(false);
-      }
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
         setIsCategoryDropdownOpen(false);
+      }
+      if (partDropdownRef.current && !partDropdownRef.current.contains(event.target as Node)) {
+        setIsPartDropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -71,13 +72,9 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
-        let boardName = "자유게시판";
-        if (initialData.boardType === "NOTICE") boardName = "공지사항";
-        else if (initialData.boardType === "SCHEDULE") boardName = "합주 일정";
-        else if (initialData.boardType === "REHEARSAL") boardName = "합주";
-
-        setBoard(boardName);
-        setCategory(initialData.category || (CATEGORIES[boardName]?.[0] || "일반"));
+        setBoard(defaultBoard);
+        setCategory(initialData.category || (CATEGORIES[defaultBoard]?.[0] || "일반"));
+        setPart(initialData.part || PARTS[0]);
         setTitle(initialData.title);
         if (initialData.mediaUrl) {
           setExistingMedia({ url: initialData.mediaUrl, type: initialData.mediaType || 'IMAGE' });
@@ -100,6 +97,7 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
       } else {
         setBoard(defaultBoard);
         setCategory(CATEGORIES[defaultBoard]?.[0] || "일반");
+        setPart(PARTS[0]);
         setTitle("");
         setFiles([]);
         setExistingMedia(null);
@@ -111,11 +109,6 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
       }
     }
   }, [isOpen, defaultBoard, initialData]);
-
-  const handleBoardChange = (newBoard: string) => {
-    setBoard(newBoard);
-    setCategory(CATEGORIES[newBoard]?.[0] || "일반");
-  };
 
   const handleAddPollOption = () => {
     if (pollOptions.length < 10) {
@@ -134,7 +127,6 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
   };
 
   const execCmd = (command: string, value?: string) => {
-    // Basic implementation of text formatting
     document.execCommand(command, false, value);
     editorRef.current?.focus();
   };
@@ -143,13 +135,6 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
     if (!title.trim()) return alert("제목을 입력해주세요!");
     const content = editorRef.current?.innerHTML || "";
     if (!content.trim() || content === "<br>") return alert("내용을 입력해주세요!");
-    if (board === "합주") {
-      const hasNewVideo = files.some(f => f.type.startsWith("video/"));
-      const hasExistingVideo = existingMedia?.type === 'VIDEO' && !removeMedia;
-      if (!hasNewVideo && !hasExistingVideo) {
-        return alert("합주 영상 게시판은 반드시 동영상 파일을 1개 이상 첨부해야 합니다.");
-      }
-    }
 
     setIsSubmitting(true);
     try {
@@ -158,14 +143,15 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
           id: initialData?.id,
           boardType: board,
           category,
+          part: board === "자유게시판" ? part : undefined,
           title: title.trim(),
           content,
           files: files.length > 0 ? files : undefined,
-          removeMedia,
           poll: usePoll && pollTitle.trim() ? {
             title: pollTitle.trim(),
             options: pollOptions.filter(o => o.trim() !== "")
-          } : undefined
+          } : undefined,
+          removeMedia: initialData?.mediaUrl && !existingMedia ? true : false
         });
       }
       onClose();
@@ -199,52 +185,12 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 hide-scrollbar">
               {/* Selects */}
               <div className="flex gap-3">
-                {isLeader ? (
-                  <div className="relative flex-1 md:flex-none" ref={boardDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsBoardDropdownOpen(!isBoardDropdownOpen)}
-                      className="w-full md:w-[160px] bg-secondary border border-border rounded-2xl pl-4 pr-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-primary text-left flex items-center justify-between gap-2"
-                    >
-                      <span className="truncate">{board}</span>
-                      <ChevronDown className="text-slate-400 shrink-0" size={16} />
-                    </button>
-                    
-                    <AnimatePresence>
-                      {isBoardDropdownOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute top-full left-0 mt-2 w-full bg-secondary border border-border rounded-xl shadow-xl overflow-hidden z-20 py-2"
-                        >
-                          {["자유게시판", "공지사항", "합주 일정", "합주"].map(b => (
-                            <button
-                              key={b}
-                              type="button"
-                              onClick={() => {
-                                handleBoardChange(b);
-                                setIsBoardDropdownOpen(false);
-                              }}
-                              className={cn(
-                                "w-full text-left px-4 py-2 text-sm font-bold transition-colors",
-                                board === b ? "bg-primary/20 text-primary" : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                              )}
-                            >
-                              {b} {b !== "자유게시판" && <span className="text-[10px] text-slate-500 ml-1">(방장)</span>}
-                            </button>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                ) : (
-                  <div className="flex-1 md:flex-none md:w-[160px] bg-primary/10 border border-primary/20 rounded-2xl px-4 py-3 text-sm font-bold text-primary flex items-center justify-center shrink-0 truncate">
-                    {board}
-                  </div>
-                )}
+                {/* Board Dropdown - fixed for community */}
+                <div className="flex-1 md:flex-none md:w-[160px] bg-primary/10 border border-primary/20 rounded-2xl px-4 py-3 text-sm font-bold text-primary flex items-center justify-center shrink-0 truncate">
+                  {board}
+                </div>
                 
+                {/* Category Dropdown */}
                 {CATEGORIES[board] && (
                   <div className="relative flex-1 md:flex-none" ref={categoryDropdownRef}>
                     <button
@@ -286,6 +232,49 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
                     </AnimatePresence>
                   </div>
                 )}
+
+                {/* Part Dropdown - Only if 자유게시판 */}
+                {board === "자유게시판" && (
+                  <div className="relative flex-1 md:flex-none" ref={partDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsPartDropdownOpen(!isPartDropdownOpen)}
+                      className="w-full md:w-[140px] bg-secondary border border-border rounded-2xl pl-4 pr-4 py-3 text-sm font-bold text-slate-300 focus:outline-none focus:border-primary text-left flex items-center justify-between gap-2"
+                    >
+                      <span className="truncate">{part}</span>
+                      <ChevronDown className="text-slate-400 shrink-0" size={16} />
+                    </button>
+
+                    <AnimatePresence>
+                      {isPartDropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute top-full left-0 mt-2 w-full bg-secondary border border-border rounded-xl shadow-xl overflow-hidden z-20 py-2 max-h-[300px] overflow-y-auto hide-scrollbar"
+                        >
+                          {PARTS.map(p => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => {
+                                setPart(p);
+                                setIsPartDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "w-full text-left px-4 py-2 text-sm font-bold transition-colors",
+                                part === p ? "bg-primary/20 text-primary" : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                              )}
+                            >
+                              {p}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
               </div>
 
               {/* Title */}
@@ -297,7 +286,7 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
                 className="w-full bg-transparent border-b border-border py-3 text-lg text-white placeholder-slate-500 focus:outline-none focus:border-primary transition-colors font-bold"
               />
 
-                {/* Toolbar & Editor */}
+              {/* Toolbar & Editor */}
               <div className="border border-border rounded-xl bg-secondary/30 overflow-hidden flex flex-col">
                 <div className="flex flex-wrap items-center gap-2 p-2 border-b border-border bg-secondary/80 overflow-x-auto hide-scrollbar relative">
                   <select 
@@ -392,25 +381,19 @@ export function WritePostModal({ isOpen, onClose, defaultBoard = "자유게시�
                   <button onClick={() => fileInputRef.current?.click()} className="bg-secondary border border-border hover:border-primary/50 px-4 py-2.5 rounded-lg text-sm font-bold text-slate-300 hover:text-white transition-all flex items-center gap-2 flex-shrink-0">
                     <ImageIcon size={16}/> 사진, 움짤, 동영상 등 파일 첨부
                   </button>
-                  <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" className="hidden" onChange={(e) => {
-                    setFiles(e.target.files ? Array.from(e.target.files) : []);
-                    setRemoveMedia(true);
-                    setExistingMedia(null);
-                  }} />
+                  <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" className="hidden" onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])} />
                   <span className="text-sm font-bold text-slate-400 truncate w-full sm:w-auto">
-                    {files.length > 0 ? (
-                      <span className="text-primary">{files.length}개의 파일 선택됨 ({(files.reduce((acc, f) => acc + f.size, 0) / 1024 / 1024).toFixed(2)} MB)</span>
-                    ) : "선택된 파일 없음"}
+                    {files.length > 0 ? <span className="text-primary">{files.length}개의 파일 선택됨 ({(files.reduce((acc, f) => acc + f.size, 0) / 1024 / 1024).toFixed(2)} MB)</span> : "선택된 파일 없음"}
                   </span>
                 </div>
 
                 {existingMedia && files.length === 0 && (
-                  <div className="mb-4 flex items-center gap-4 bg-background p-3 rounded-xl border border-border relative pr-12 w-full md:w-fit">
+                  <div className="mb-4 inline-flex items-center gap-4 bg-background p-3 rounded-xl border border-border relative pr-12">
                     <div className="w-16 h-16 rounded overflow-hidden bg-slate-800 shrink-0">
                       {existingMedia.type === 'VIDEO' ? (
-                        <video src={existingMedia.url.startsWith('http') ? existingMedia.url : `https://picsum.photos/seed/${existingMedia.url}/100/100`} className="w-full h-full object-cover" />
+                        <video src={existingMedia.url} className="w-full h-full object-cover" />
                       ) : (
-                        <img src={existingMedia.url.startsWith('http') ? existingMedia.url : `https://picsum.photos/seed/${existingMedia.url}/100/100`} className="w-full h-full object-cover" />
+                        <img src={existingMedia.url} className="w-full h-full object-cover" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">

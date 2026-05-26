@@ -1,13 +1,12 @@
 "use client";
 import { useContext, useState, useEffect } from "react";
 import { ReportModal } from "@/components/common/ReportModal";
-import { WritePostModal } from "@/components/post/WritePostModal";
-// @ts-nocheck
+import { CommunityWritePostModal } from "@/components/post/CommunityWritePostModal";
 import { LayoutContext } from "@/components/layout/AppLayout";
-
-import { MessageCircle, HeartHandshake, PenTool, Search, MessageSquare, ThumbsUp, MoreHorizontal, Menu, Flag } from "lucide-react";
+import { getCommunityPostsApi, getCommunityPostApi, createCommunityPostApi, updateCommunityPostApi, deleteCommunityPostApi } from "@/api/community/communityService";
+import { MessageCircle, HeartHandshake, PenTool, Search, MessageSquare, ThumbsUp, MoreHorizontal, Menu, Flag, Edit3, Trash2 } from "lucide-react";
 import { useRouter, usePathname } from 'next/navigation';
-import type { LayoutContextType } from "@/components/layout/AppLayout";
+import { getUserInfoApi } from '@/api/account/userService';
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -24,18 +23,22 @@ const CATEGORIES: Record<string, string[]> = {
 
 const PARTS = ["전체", "보컬", "기타", "베이스", "드럼", "건반", "작곡/미디", "그외"];
 
-const POSTS = [
-  { id: 1, title: "펜더 스트라토캐스터 픽업 교체 질문이요", author: "기타초보", time: "10분 전", likes: 12, comments: 5, type: "free", tag: "질문", part: "기타" },
-  { id: 2, title: "합주때마다 베이스분이 자꾸 늦는데 어떻게 말하죠ㅠㅠ", author: "멘붕리더", time: "1시간 전", likes: 45, comments: 23, type: "counseling", tag: "밴드생활", part: "" },
-  { id: 3, title: "드디어 PRS 커스텀 24 샀습니다!! 영롱하네요✨", author: "톤성애자", time: "3시간 전", likes: 120, comments: 18, type: "flex", tag: "자랑", img: "prs", part: "" },
-  { id: 4, title: "요즘 유행하는 이펙터 보드 세팅 공유합니다", author: "보드장인", time: "5시간 전", likes: 88, comments: 32, type: "free", tag: "장비", part: "기타" },
-  { id: 5, title: "오디오인터페이스 추천좀 부탁드립니다 (예산 50)", author: "홈레코딩입문", time: "8시간 전", likes: 5, comments: 12, type: "free", tag: "정보", part: "작곡/미디" },
-  { id: 6, title: "보컬 발성 연습 팁 공유합니다", author: "득음수련생", time: "1일 전", likes: 67, comments: 9, type: "free", tag: "정보", part: "보컬" },
-];
+const getRelativeTime = (dateString?: string) => {
+  if (!dateString) return "최근";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / 60000);
+  if (diffInMinutes < 1) return "방금 전";
+  if (diffInMinutes < 60) return `${diffInMinutes}분 전`;
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours}시간 전`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) return `${diffInDays}일 전`;
+  return date.toLocaleDateString();
+};
 
 export default function CommunityCategoryPage() {
   const pathname = usePathname();
-  const location = { pathname };
   const router = useRouter();
   const navigate = (path: string) => router.push(path);
   const currentTabId = pathname.split("/").pop() || "free";
@@ -43,28 +46,128 @@ export default function CommunityCategoryPage() {
   
   const [selectedCategory, setSelectedCategory] = useState("전체");
   const [selectedPart, setSelectedPart] = useState("전체");
+  const [keyword, setKeyword] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  
+  const [posts, setPosts] = useState<CommunityPostData[]>([]);
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<CommunityPostData | null>(null);
+  const [isPopular, setIsPopular] = useState(false);
   
-  // Reset category and part when tab changes
-  useEffect(() => {
-    setSelectedCategory("전체");
-    setSelectedPart("전체");
-  }, [currentTabId]);
-
   const currentTabInfo = TABS.find(t => t.id === currentTabId) || TABS[0];
   const Icon = currentTabInfo.icon;
   const currentCategories = CATEGORIES[currentTabId] || ["전체"];
 
-  let filteredPosts = POSTS.filter(p => p.type === currentTabId);
-  
-  if (selectedCategory !== "전체") {
-    filteredPosts = filteredPosts.filter(p => p.tag === selectedCategory);
-  }
+  useEffect(() => {
+    getUserInfoApi()
+      .then((user: any) => setCurrentUserId(user.userId))
+      .catch((err: any) => console.error('Failed to load user info:', err));
+  }, []);
 
-  if (selectedPart !== "전체") {
-    filteredPosts = filteredPosts.filter(p => p.part === selectedPart);
-  }
+  // Reset category and part when tab changes
+  useEffect(() => {
+    setSelectedCategory("전체");
+    setSelectedPart("전체");
+    setKeyword("");
+    setSearchInput("");
+    setIsPopular(false);
+  }, [currentTabId]);
+
+  const fetchPosts = async () => {
+    try {
+      const boardType = currentTabInfo.label;
+      const cat = selectedCategory === "전체" ? undefined : selectedCategory;
+      const pt = selectedPart === "전체" ? undefined : selectedPart;
+      const kw = keyword.trim() === "" ? undefined : keyword.trim();
+      
+      const data = await getCommunityPostsApi(boardType, cat, pt, kw, 0, isPopular);
+      setPosts(data || []);
+    } catch (error) {
+      console.error("Failed to fetch community posts:", error);
+      setPosts([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchPosts();
+  }, [currentTabId, selectedCategory, selectedPart, keyword, isPopular]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setKeyword(searchInput);
+  };
+
+  const handleCreatePost = async (data: any) => {
+    let mediaUrl = undefined;
+    let mediaType = undefined;
+    
+    if (data.files && data.files.length > 0) {
+      try {
+        const { uploadToCloudflare } = require('@/lib/cloudflare');
+        mediaUrl = await uploadToCloudflare(data.files[0]); // upload first file for now
+        mediaType = data.files[0].type.startsWith("video/") ? "VIDEO" : "IMAGE";
+      } catch (err) {
+        console.error("Failed to upload file:", err);
+        alert("파일 업로드에 실패했습니다.");
+        return;
+      }
+    }
+
+    const newPost = await createCommunityPostApi({
+      boardType: data.boardType,
+      category: data.category,
+      part: data.part,
+      title: data.title,
+      content: data.content,
+      mediaUrl,
+      mediaType,
+      poll: data.poll
+    });
+    router.push(`/community/post/${newPost.id}`);
+  };
+
+  const handleUpdatePost = async (data: any) => {
+    if (!editingPost) return;
+    try {
+      let mediaUrl = editingPost.mediaUrl;
+      let mediaType = editingPost.mediaType;
+
+      if (data.files && data.files.length > 0) {
+        const { uploadToCloudflare } = require('@/lib/cloudflare');
+        mediaUrl = await uploadToCloudflare(data.files[0]);
+        mediaType = data.files[0].type.startsWith("video/") ? "VIDEO" : "IMAGE";
+      } else if (data.removeMedia) {
+        mediaUrl = undefined;
+        mediaType = undefined;
+      }
+
+      await updateCommunityPostApi(editingPost.id, {
+        ...data,
+        mediaUrl,
+        mediaType
+      });
+      fetchPosts();
+      setIsEditModalOpen(false);
+      setEditingPost(null);
+    } catch (e) {
+      console.error("Failed to update post", e);
+      alert("게시글 수정에 실패했습니다.");
+    }
+  };
+
+  const handleDeletePost = async (postId: number | string) => {
+    if (!confirm("게시글을 삭제하시겠습니까?")) return;
+    try {
+      await deleteCommunityPostApi(postId);
+      fetchPosts();
+    } catch (e) {
+      console.error("Failed to delete post", e);
+      alert("게시글 삭제에 실패했습니다.");
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-20">
@@ -82,17 +185,35 @@ export default function CommunityCategoryPage() {
         <p className="text-sm text-slate-400 mb-5 ml-12 md:ml-10">뮤지션들과 자유롭게 소통해보세요.</p>
         
         {/* Search */}
-        <div className="relative group max-w-2xl mb-4">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary transition-colors" size={18} />
+        <form onSubmit={handleSearch} className="relative group max-w-2xl mb-4">
+          <button type="submit" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary transition-colors">
+            <Search size={18} />
+          </button>
           <input 
             type="text" 
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="글 제목, 내용, 태그 검색" 
             className="w-full bg-secondary border border-border rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all text-white placeholder-slate-500 shadow-inner"
           />
-        </div>
+        </form>
 
         {/* Category Filter */}
-        <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 -mx-6 px-6 md:mx-0 md:px-0 mb-3">
+        <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 -mx-6 px-6 md:mx-0 md:px-0 mb-3 items-center">
+          <button
+            onClick={() => setIsPopular(!isPopular)}
+            className={cn(
+              "px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all border flex items-center gap-1",
+              isPopular
+                ? "bg-rose-500/20 text-rose-400 border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+                : "bg-secondary text-slate-400 border-border hover:bg-slate-800 hover:text-rose-400"
+            )}
+          >
+            🔥 인기
+          </button>
+          
+          <div className="w-px h-6 bg-border mx-1 shrink-0"></div>
+
           {currentCategories.map((cat) => (
             <button
               key={cat}
@@ -131,11 +252,11 @@ export default function CommunityCategoryPage() {
       </header>
 
       <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 max-w-[1600px] mx-auto w-full text-left">
-        {filteredPosts.length > 0 ? (
-          filteredPosts.map((post) => (
+        {posts.length > 0 ? (
+          posts.map((post) => (
             <div 
               key={post.id} 
-              onClick={() => navigate(`/post/${post.id}`)}
+              onClick={() => navigate(`/community/post/${post.id}`)}
               className="bg-secondary border border-border rounded-2xl p-5 hover:border-slate-600 transition-colors cursor-pointer group text-left flex flex-col h-full"
             >
               <div className="flex justify-between items-start mb-3">
@@ -143,39 +264,87 @@ export default function CommunityCategoryPage() {
                   {post.part && post.part !== "전체" && (
                     <span className="text-[11px] font-bold text-slate-300 bg-slate-800 border border-border px-2 py-1 rounded-md">{post.part}</span>
                   )}
-                  <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-1 rounded-md">{post.tag}</span>
+                  {post.category && (
+                    <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-1 rounded-md">{post.category}</span>
+                  )}
                 </div>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setReportModalOpen(true); }}
-                  className="text-slate-600 hover:text-rose-500 transition-colors p-1 shrink-0"
-                  title="신고하기"
-                >
-                  <Flag size={14} />
-                </button>
+                <div className="flex items-center gap-1">
+                  {currentUserId === post.userId && (
+                    <>
+                      <button 
+                        onClick={async (e) => { 
+                          e.stopPropagation(); 
+                          try {
+                            const fullPost = await getCommunityPostApi(post.id);
+                            setEditingPost({
+                              ...post,
+                              content: fullPost.content,
+                              poll: fullPost.poll
+                            });
+                            setIsEditModalOpen(true);
+                          } catch (err) {
+                            alert("게시글 정보를 불러오는 데 실패했습니다.");
+                          }
+                        }}
+                        className="text-slate-500 hover:text-primary transition-colors p-1.5 rounded-md hover:bg-white/5"
+                        title="수정"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id); }}
+                        className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5"
+                        title="삭제"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                  {currentUserId !== post.userId && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setReportModalOpen(true); }}
+                      className="text-slate-600 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5 shrink-0"
+                      title="신고하기"
+                    >
+                      <Flag size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
               
               <h3 className="text-base md:text-lg font-bold text-white mb-2 group-hover:text-primary transition-colors line-clamp-2 leading-snug">
                 {post.title}
               </h3>
               
-              {post.img && (
+              {post.mediaUrl && post.mediaType === "IMAGE" && (
                 <div className="w-full h-48 bg-slate-800 rounded-xl mb-4 overflow-hidden border border-border/50 shrink-0">
-                  <img src={`https://picsum.photos/seed/${post.img}/600/400`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="Post attachment" referrerPolicy="no-referrer" />
+                  <img src={post.mediaUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="Post attachment" referrerPolicy="no-referrer" />
+                </div>
+              )}
+              
+              {post.mediaUrl && post.mediaType === "VIDEO" && (
+                <div className="w-full h-48 bg-black rounded-xl mb-4 overflow-hidden border border-border/50 shrink-0 relative">
+                  <video src={post.mediaUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" muted />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center border border-white/20 text-white">
+                      ▶
+                    </div>
+                  </div>
                 </div>
               )}
               
               <div className="flex items-center justify-between text-xs text-slate-400 mt-auto pt-4">
                 <div className="flex items-center gap-3">
-                  <span className="font-medium text-slate-300">{post.author}</span>
-                  <span>{post.time}</span>
+                  <span className="font-medium text-slate-300">{post.authorName}</span>
+                  <span>{getRelativeTime(post.createdAt)}</span>
                 </div>
                 
                 <div className="flex items-center gap-4">
                   <span className="flex items-center gap-1.5 hover:text-white transition-colors">
-                    <ThumbsUp size={14} /> {post.likes}
+                    <ThumbsUp size={14} /> {post.likeCount || 0}
                   </span>
                   <span className="flex items-center gap-1.5 hover:text-white transition-colors">
-                    <MessageSquare size={14} /> {post.comments}
+                    <MessageSquare size={14} /> {post.commentCount || 0}
                   </span>
                 </div>
               </div>
@@ -184,7 +353,7 @@ export default function CommunityCategoryPage() {
         ) : (
            <div className="text-center py-20 text-slate-500 md:col-span-2">
              <MessageCircle className="mx-auto mb-4 opacity-50" size={48} />
-             <p>해당 파트에 아직 등록된 게시글이 없습니다.</p>
+             <p>등록된 게시글이 없습니다.</p>
            </div>
         )}
       </div>
@@ -198,12 +367,33 @@ export default function CommunityCategoryPage() {
       </button>
 
       {/* Write Post Modal Instance */}
-      <WritePostModal 
+      <CommunityWritePostModal 
         isOpen={isWriteModalOpen} 
         onClose={() => setIsWriteModalOpen(false)} 
         defaultBoard={currentTabInfo.label}
-        isLeader={false} // 커뮤니티는 방장 권한이 없으므로 항상 false
+        isLeader={false}
+        onSubmit={handleCreatePost}
       />
+
+      {editingPost && (
+        <CommunityWritePostModal 
+          isOpen={isEditModalOpen}
+          onClose={() => { setIsEditModalOpen(false); setEditingPost(null); }}
+          defaultBoard={editingPost.boardType}
+          initialData={{
+            id: editingPost.id,
+            boardType: editingPost.boardType,
+            category: editingPost.category,
+            part: editingPost.part,
+            title: editingPost.title,
+            content: editingPost.content,
+            mediaUrl: editingPost.mediaUrl,
+            mediaType: editingPost.mediaType,
+            poll: editingPost.poll
+          }}
+          onSubmit={handleUpdatePost}
+        />
+      )}
 
       {/* Report Modal */}
       <ReportModal 

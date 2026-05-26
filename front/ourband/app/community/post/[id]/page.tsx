@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { ReportModal } from '@/components/common/ReportModal';
 import { UserProfileModal } from '@/components/common/UserProfileModal';
 import { getUserInfoApi } from '@/api/account/userService';
-import { WritePostModal } from '@/components/post/WritePostModal';
+import { CommunityWritePostModal } from '@/components/post/CommunityWritePostModal';
 
 type PollOption = {
   id: string;
@@ -26,39 +26,13 @@ type PollData = {
 };
 
 type PostData = {
-  id: string; bandId?: string | number; title: string; content: string; author: string; authorId?: string | number; date: string; likes: number; comments: number; tag: string; board: string; img?: string; video?: string; poll?: PollData;
+  id: string; bandId?: string | number; userId?: string | number; title: string; content: string; author: string; date: string; likes: number; comments: number; tag: string; board: string; img?: string; video?: string; poll?: PollData; part?: string;
   isLikedByCurrentUser?: boolean;
   authorProfileImageUrl?: string;
   commentsList?: any[];
 };
 
-const MOCK_POSTS: Record<string, PostData> = {
-  '1': {
-    id: '1', title: '펜더 스트라토캐스터 픽업 교체 질문이요', content: '이번에 스트랫 픽업을 텍사스 스페셜로 교체하려고 하는데 혼자서도 가능할까요?\n납땜은 예전에 학교에서 해본게 다입니다.\n혹시 주의할 점이나 팁이 있다면 공유 부탁드립니다!', author: '기타초보', date: '2023-11-20', likes: 12, comments: 5, tag: '질문', board: '자유게시판'
-  },
-  '2': {
-    id: '2', title: '합주때마다 베이스분이 자꾸 늦는데 어떻게 말하죠ㅠㅠ', content: '안녕하세요 밴드 리더를 맡고 있는 사람입니다.\n저희 밴드 베이스분이 실력은 정말 좋으신데, 매주 합주때마다 20~30분씩 지각을 하시네요.\n어떻게 기분 안 상하게 말씀드려볼지 고민입니다 ㅠㅠ', author: '멘붕리더', date: '2023-11-21', likes: 45, comments: 23, tag: '밴드생활', board: '고민상담'
-  },
-  '3': {
-    id: '3', title: '드디어 PRS 커스텀 24 샀습니다!! 영롱하네요✨', content: '몇 달 동안 알바해서 드디어 목표하던 텐탑을 데려왔습니다!!!\n진짜 쳐보니까 소리도 외관도 미쳤네요... 한 달간 라면만 먹어도 배부를 것 같습니다 ㅋㅋㅋ', author: '톤성애자', date: '2023-11-21', likes: 120, comments: 18, tag: '자랑', board: '악기자랑', img: 'prs'
-  },
-  'schedule1': {
-    id: 'schedule1', title: '6월 3주차 정기 합주 투표', content: '가능한 시간 모두 투표해주세요. 장소는 저번이랑 같은 홍대 프리버드 합주실입니다.', author: '방장 (조지스미스)', date: '3일 전', likes: 5, comments: 2, tag: '일정', board: '합주 일정',
-    poll: {
-      title: '6월 3주차 정기 합주 투표',
-      description: '단일 투표만 가능합니다',
-      totalVotes: 4,
-      hasVoted: false,
-      options: [
-        { id: 'opt1', text: '토요일 오후 2시~4시', votes: 3 },
-        { id: 'opt2', text: '토요일 오후 4시~6시', votes: 0 },
-        { id: 'opt3', text: '일요일 오후 1시~3시', votes: 1 },
-      ]
-    }
-  }
-};
-
-export default function PostDetailPage() {
+export default function CommunityPostDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -79,10 +53,19 @@ export default function PostDetailPage() {
   const [replyText, setReplyText] = useState("");
   const [editingComment, setEditingComment] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // API Import 추가
-  const { getBandPostApi, toggleLikeApi, createBandPostCommentApi, votePollApi, updateCommentApi, deleteCommentApi, updateBandPostApi, deleteBandPostApi } = require('@/api/band/bandService');
+  const { 
+    getCommunityPostApi, 
+    toggleCommunityLikeApi, 
+    createCommunityCommentApi, 
+    voteCommunityPollApi, 
+    updateCommunityCommentApi, 
+    deleteCommunityCommentApi,
+    updateCommunityPostApi,
+    deleteCommunityPostApi
+  } = require('@/api/community/communityService');
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // 현재 유저 정보 로드
   useEffect(() => {
@@ -94,24 +77,20 @@ export default function PostDetailPage() {
   useEffect(() => {
     const fetchPost = async () => {
       try {
-        const data = await getBandPostApi(id);
-        let boardName = data.boardType;
-        if (data.boardType === 'NOTICE') boardName = '공지사항';
-        if (data.boardType === 'FREE') boardName = '자유게시판';
-        if (data.boardType === 'SCHEDULE') boardName = '합주 일정';
-        if (data.boardType === 'REHEARSAL') boardName = '합주 영상';
+        const data = await getCommunityPostApi(id);
+        let boardName = data.boardType || '자유게시판';
         
         setPost({
           id: String(data.id),
-          bandId: data.bandId,
           title: data.title,
           content: data.content,
           author: data.authorName || '알 수 없음',
-          authorId: data.authorId,
+          userId: data.userId,
           date: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : '',
           likes: data.likeCount || 0, 
           comments: data.commentCount || 0,
           tag: data.category || '일반',
+          part: data.part || '일반',
           board: boardName,
           img: data.mediaType === 'IMAGE' ? data.mediaUrl : undefined,
           video: data.mediaType === 'VIDEO' ? data.mediaUrl : undefined,
@@ -135,10 +114,7 @@ export default function PostDetailPage() {
           });
         }
       } catch (e) {
-        console.error("Failed to fetch post, falling back to mock", e);
-        const mockPost = MOCK_POSTS[id as keyof typeof MOCK_POSTS] || MOCK_POSTS['1'];
-        setPost(mockPost);
-        setPoll(mockPost.poll);
+        console.error("Failed to fetch community post", e);
       } finally {
         setLoading(false);
       }
@@ -151,7 +127,7 @@ export default function PostDetailPage() {
     if (!poll || !post) return;
     
     try {
-      await votePollApi(post.bandId || 1, id, poll.id || 1, optionId);
+      await voteCommunityPollApi(id, poll.id || 1, optionId);
       
       const newOptions = poll.options.map(opt => {
         if (opt.id === optionId) {
@@ -188,21 +164,7 @@ export default function PostDetailPage() {
     if (window.history.length > 2) {
       router.back();
     } else {
-      router.push(`/band/${id}/board`);
-    }
-  };
-
-  const handleToggleLike = async () => {
-    try {
-      const result = await toggleLikeApi(id);
-      setIsLiked(result.isLiked);
-      setPost(prev => prev ? {
-        ...prev,
-        likes: result.isLiked ? prev.likes + 1 : prev.likes - 1,
-        isLikedByCurrentUser: result.isLiked
-      } : prev);
-    } catch (e) {
-      console.error("Failed to toggle like", e);
+      router.push(`/community/free`);
     }
   };
 
@@ -216,18 +178,12 @@ export default function PostDetailPage() {
         mediaUrl = await uploadToCloudflare(data.files[0]);
         mediaType = data.files[0].type.startsWith("video/") ? "VIDEO" : "IMAGE";
       } else if (data.removeMedia) {
-        mediaUrl = "";
-        mediaType = "";
+        mediaUrl = null;
+        mediaType = null;
       }
 
-      let mappedBoardType = "FREE";
-      if (data.boardType === "공지사항" || data.boardType === "NOTICE") mappedBoardType = "NOTICE";
-      else if (data.boardType === "합주 일정" || data.boardType === "SCHEDULE") mappedBoardType = "SCHEDULE";
-      else if (data.boardType === "합주 영상" || data.boardType === "합주" || data.boardType === "REHEARSAL") mappedBoardType = "REHEARSAL";
-
-      await updateBandPostApi(post?.bandId || 1, id, {
+      await updateCommunityPostApi(id, {
         ...data,
-        boardType: mappedBoardType,
         mediaUrl,
         mediaType
       });
@@ -241,11 +197,25 @@ export default function PostDetailPage() {
   const handleDeletePost = async () => {
     if (!confirm("게시글을 삭제하시겠습니까?")) return;
     try {
-      await deleteBandPostApi(post?.bandId || 1, id);
-      router.push(`/band/${post?.bandId}/board`);
+      await deleteCommunityPostApi(id);
+      router.push(`/community/free`);
     } catch (e) {
-      console.error(e);
+      console.error("Failed to delete post", e);
       alert("게시글 삭제에 실패했습니다.");
+    }
+  };
+
+  const handleToggleLike = async () => {
+    try {
+      const result = await toggleCommunityLikeApi(id);
+      setIsLiked(result.isLiked);
+      setPost(prev => prev ? {
+        ...prev,
+        likes: result.isLiked ? prev.likes + 1 : prev.likes - 1,
+        isLikedByCurrentUser: result.isLiked
+      } : prev);
+    } catch (e) {
+      console.error("Failed to toggle like", e);
     }
   };
 
@@ -256,7 +226,7 @@ export default function PostDetailPage() {
     
     setIsSubmittingComment(true);
     try {
-      const newComment = await createBandPostCommentApi(post.bandId || 1, id, { content: commentText.trim(), parentId: null });
+      const newComment = await createCommunityCommentApi(id, { content: commentText.trim(), parentId: null });
       setPost(prev => prev ? {
         ...prev,
         comments: prev.comments + 1,
@@ -275,7 +245,7 @@ export default function PostDetailPage() {
   const handleReplySubmit = async (parentId: number) => {
     if (!replyText.trim() || !post) return;
     try {
-      const newReply = await createBandPostCommentApi(post.bandId || 1, id, { content: replyText.trim(), parentId });
+      const newReply = await createCommunityCommentApi(id, { content: replyText.trim(), parentId });
       // 부모 댓글의 replies에 추가
       setPost(prev => {
         if (!prev) return prev;
@@ -308,7 +278,7 @@ export default function PostDetailPage() {
   const handleEditComment = async (commentId: number) => {
     if (!editText.trim() || !post) return;
     try {
-      const updated = await updateCommentApi(post.bandId || 1, id, commentId, { content: editText.trim() });
+      const updated = await updateCommunityCommentApi(id, commentId, { content: editText.trim() });
       setPost(prev => {
         if (!prev) return prev;
         const updateInComments = (comments: any[]): any[] => {
@@ -336,22 +306,22 @@ export default function PostDetailPage() {
   const handleDeleteComment = async (commentId: number) => {
     if (!confirm("댓글을 삭제하시겠습니까?") || !post) return;
     try {
-      await deleteCommentApi(post.bandId || 1, id, commentId);
+      await deleteCommunityCommentApi(id, commentId);
       // 댓글 목록에서 제거 (대댓글 수 포함 차감)
       setPost(prev => {
         if (!prev) return prev;
         let removedCount = 0;
         const removeFromComments = (comments: any[]): any[] => {
-          return comments.map((c: any) => {
+          return comments.filter((c: any) => {
             if (c.id === commentId) {
               removedCount = 1 + (c.replies?.length || 0);
-              return null;
+              return false;
             }
             if (c.replies && c.replies.length > 0) {
-              return { ...c, replies: removeFromComments(c.replies) };
+              c.replies = removeFromComments(c.replies);
             }
-            return c;
-          }).filter(c => c !== null);
+            return true;
+          });
         };
         const newList = removeFromComments(prev.commentsList || []);
         return { ...prev, comments: Math.max(0, prev.comments - removedCount), commentsList: newList };
@@ -362,17 +332,16 @@ export default function PostDetailPage() {
     }
   };
 
-  // 댓글 컴포넌트
   const CommentItem = ({ c, depth = 0 }: { c: any; depth?: number }) => {
     const isEditing = editingComment === c.id;
     const isReplying = replyingTo === c.id;
-    const isAuthor = currentUserId === c.authorId;
+    const isAuthor = currentUserId === c.userId;
 
     return (
       <div className={cn("flex gap-3", depth > 0 && "ml-8 pl-4 border-l-2 border-border/40")}>
         <div
           className="w-8 h-8 rounded-full bg-slate-800 border border-border shrink-0 cursor-pointer hover:border-primary transition-colors overflow-hidden mt-0.5"
-          onClick={() => setSelectedUser({ id: c.authorId, name: c.authorName, image: c.authorProfileImageUrl })}
+          onClick={() => setSelectedUser({ id: c.userId, name: c.authorName, image: c.authorProfileImageUrl })}
         >
           {c.authorProfileImageUrl ? (
             <img src={c.authorProfileImageUrl} alt={c.authorName} className="w-full h-full object-cover" />
@@ -385,7 +354,7 @@ export default function PostDetailPage() {
           <div className="flex justify-between items-center">
             <div
               className="flex items-center gap-2 cursor-pointer group"
-              onClick={() => setSelectedUser({ id: c.authorId, name: c.authorName, image: c.authorProfileImageUrl })}
+              onClick={() => setSelectedUser({ id: c.userId, name: c.authorName, image: c.authorProfileImageUrl })}
             >
               <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">{c.authorName}</span>
               <span className="text-[10px] text-slate-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
@@ -504,7 +473,7 @@ export default function PostDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <button className="text-slate-400 hover:text-white transition-colors p-2 rounded-full hover:bg-white/10"><Share2 size={20}/></button>
-          {currentUserId !== Number(post.authorId) && (
+          {currentUserId !== post.userId && (
             <button onClick={() => setReportModalOpen(true)} className="text-slate-400 hover:text-rose-500 transition-colors p-2 rounded-full hover:bg-white/10"><AlertCircle size={20}/></button>
           )}
         </div>
@@ -516,7 +485,7 @@ export default function PostDetailPage() {
         <div className="flex justify-between items-center pb-6 border-b border-border/50 mb-8">
           <div 
             className="flex items-center gap-3 cursor-pointer group"
-            onClick={() => setSelectedUser({ id: post.author, name: post.author })}
+            onClick={() => setSelectedUser({ id: post.userId || post.author, name: post.author })}
           >
             <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-background overflow-hidden p-0.5 shadow-sm group-hover:border-primary/50 transition-colors">
               <div className="w-full h-full bg-secondary rounded-full flex items-center justify-center overflow-hidden">
@@ -532,19 +501,14 @@ export default function PostDetailPage() {
               <span className="text-xs text-slate-500">{post.date}</span>
             </div>
           </div>
-          {currentUserId === Number(post.authorId) && (
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setIsEditModalOpen(true)}
-                className="text-slate-400 hover:text-primary transition-colors flex items-center gap-1.5 text-sm font-bold bg-secondary border border-border px-3 py-1.5 rounded-lg"
-              >
-                <Edit3 size={16} /> 수정
+
+          {currentUserId === post.userId && (
+            <div className="flex items-center gap-1">
+              <button onClick={() => setIsEditModalOpen(true)} className="text-slate-500 hover:text-primary transition-colors p-2 rounded-md hover:bg-white/5" title="수정">
+                <Edit3 size={18} />
               </button>
-              <button 
-                onClick={handleDeletePost}
-                className="text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1.5 text-sm font-bold bg-secondary border border-border px-3 py-1.5 rounded-lg"
-              >
-                <Trash2 size={16} /> 삭제
+              <button onClick={handleDeletePost} className="text-slate-500 hover:text-rose-500 transition-colors p-2 rounded-md hover:bg-white/5" title="삭제">
+                <Trash2 size={18} />
               </button>
             </div>
           )}
@@ -560,10 +524,10 @@ export default function PostDetailPage() {
             <img src={post.img.startsWith('http') ? post.img : `https://picsum.photos/seed/${post.img}/800/600`} className="w-full h-auto" alt="게시글 첨부" />
           </div>
         )}
-
+        
         {post.video && (
           <div className="mb-12 rounded-2xl overflow-hidden border border-border bg-black">
-            <video src={post.video} className="w-full h-auto" controls />
+            <video src={post.video.startsWith('http') ? post.video : post.video} controls className="w-full h-auto max-h-[600px]" />
           </div>
         )}
         
@@ -682,21 +646,23 @@ export default function PostDetailPage() {
         userName={selectedUser?.name}
         userImage={selectedUser?.image}
       />
-      <WritePostModal 
-        isOpen={isEditModalOpen} 
-        onClose={() => setIsEditModalOpen(false)} 
-        onSubmit={handleUpdatePost}
-        defaultBoard={post.board === "공지사항" ? "NOTICE" : post.board === "합주 일정" ? "SCHEDULE" : post.board === "합주 영상" ? "REHEARSAL" : "FREE"}
+
+      <CommunityWritePostModal 
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        defaultBoard={post.board}
         initialData={{
           id: post.id,
-          boardType: post.board === "공지사항" ? "NOTICE" : post.board === "합주 일정" ? "SCHEDULE" : post.board === "합주 영상" ? "REHEARSAL" : "FREE",
+          boardType: post.board,
           category: post.tag,
+          part: post.part,
           title: post.title,
           content: post.content,
           mediaUrl: post.img || post.video,
           mediaType: post.img ? 'IMAGE' : (post.video ? 'VIDEO' : undefined),
           poll: poll || post.poll
         }}
+        onSubmit={handleUpdatePost}
       />
     </div>
   );

@@ -48,9 +48,13 @@ export interface PollData {
 export type BandPostCommentData = {
   id: number;
   content: string;
+  authorId?: number;
   authorName: string;
   authorProfileImageUrl?: string;
   createdAt: string;
+  updatedAt?: string;
+  parentId?: number | null;
+  replies?: BandPostCommentData[];
 };
 
 export interface BandPostData {
@@ -115,8 +119,20 @@ export const updateBandPostApi = async (bandId: string | number, postId: string 
 };
 
 // 9. 게시글 댓글 달기 API
-export const createBandPostCommentApi = async (bandId: string | number, postId: string | number, data: { content: string }): Promise<BandPostCommentData> => {
+export const createBandPostCommentApi = async (bandId: string | number, postId: string | number, data: { content: string; parentId?: number | null }): Promise<BandPostCommentData> => {
   const response = await apiClient.post(`/bands/${bandId}/posts/${postId}/comments`, data);
+  return response.data;
+};
+
+// 11. 댓글 수정 API
+export const updateCommentApi = async (bandId: string | number, postId: string | number, commentId: string | number, data: { content: string }): Promise<BandPostCommentData> => {
+  const response = await apiClient.put(`/bands/${bandId}/posts/${postId}/comments/${commentId}`, data);
+  return response.data;
+};
+
+// 12. 댓글 삭제 API
+export const deleteCommentApi = async (bandId: string | number, postId: string | number, commentId: string | number): Promise<{ message: string }> => {
+  const response = await apiClient.delete(`/bands/${bandId}/posts/${postId}/comments/${commentId}`);
   return response.data;
 };
 

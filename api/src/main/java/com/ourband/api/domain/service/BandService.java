@@ -228,7 +228,15 @@ public class BandService {
         if (boardType == null || boardType.trim().isEmpty() || boardType.equalsIgnoreCase("전체")) {
             posts = bandPostRepository.findByBandIdOrderByCreatedAtDesc(bandId);
         } else {
-            posts = bandPostRepository.findByBandIdAndBoardTypeOrderByCreatedAtDesc(bandId, boardType.toUpperCase());
+            String upper = boardType.toUpperCase();
+            List<String> types = new java.util.ArrayList<>();
+            types.add(upper);
+            if (upper.equals("FREE")) types.add("자유게시판");
+            if (upper.equals("NOTICE")) types.add("공지사항");
+            if (upper.equals("SCHEDULE")) { types.add("합주 일정"); types.add("일정"); }
+            if (upper.equals("REHEARSAL")) { types.add("합주"); types.add("합주 영상"); }
+            
+            posts = bandPostRepository.findByBandIdAndBoardTypeInOrderByCreatedAtDesc(bandId, types);
         }
 
         List<BandMember> members = bandMemberRepository.findByBandId(bandId);
@@ -337,28 +345,10 @@ public class BandService {
             isLikedByCurrentUser = bandPostLikeRepository.existsByPostIdAndUserId(postId, currentUserId);
         }
         
-        List<com.ourband.api.domain.model.BandPostComment> commentsRaw = bandPostCommentRepository.findByPostIdOrderByCreatedAtAsc(postId);
-        List<BandPostCommentResponseDTO> comments = new ArrayList<>();
-        for (com.ourband.api.domain.model.BandPostComment c : commentsRaw) {
-            User cAuthor = userRepository.findById(c.getUserId()).orElse(null);
-            String cAuthorName = cAuthor != null ? cAuthor.getNickname() : "알 수 없음";
-            String cProfileImageUrl = null;
-            if (cAuthor != null) {
-                Profile cProfile = profileRepository.findByUser_UserId(cAuthor.getUserId()).orElse(null);
-                if (cProfile != null) {
-                    cProfileImageUrl = cProfile.getProfilePictureUrl();
-                }
-            }
-            comments.add(BandPostCommentResponseDTO.builder()
-                    .id(c.getId())
-                    .postId(c.getPostId())
-                    .authorId(c.getUserId())
-                    .authorName(cAuthorName)
-                    .authorProfileImageUrl(cProfileImageUrl)
-                    .content(c.getContent())
-                    .createdAt(c.getCreatedAt())
-                    .build());
-        }
+        List<com.ourband.api.domain.model.BandPostComment> topLevelComments = bandPostCommentRepository.findByPostIdAndParentIdIsNullOrderByCreatedAtAsc(postId);
+        List<BandPostCommentResponseDTO> comments = topLevelComments.stream()
+                .map(this::mapCommentToDTO)
+                .toList();
 
         // 투표 조회 - DB에 poll_id가 votes에 없으므로 option을 통해 조회
         PollResponseDTO pollResponse = null;
@@ -571,23 +561,42 @@ public class BandService {
         post.setCategory(request.getCategory());
         post.setTitle(request.getTitle());
         post.setContent(request.getContent());
-        if (request.getMediaUrl() != null) post.setMediaUrl(request.getMediaUrl());
-        if (request.getMediaType() != null) post.setMediaType(request.getMediaType());
+        if (request.getMediaUrl() != null) {
+            post.setMediaUrl(request.getMediaUrl().isEmpty() ? null : request.getMediaUrl());
+            post.setMediaType(request.getMediaType() == null || request.getMediaType().isEmpty() ? null : request.getMediaType());
+        }
         if (request.getScheduleDate() != null) post.setScheduleDate(request.getScheduleDate());
 
-        // 기존 투표 삭제
+        boolean[] keepExistingPoll = {false};
+
+        // 기존 투표 삭제 또는 유지
         bandPollRepository.findByPostId(postId).ifPresent(poll -> {
             List<BandPollOptions> options = bandPollOptionRepository.findByPollId(poll.getId());
             List<Long> optionIds = options.stream().map(BandPollOptions::getId).collect(Collectors.toList());
+            
+            boolean hasVotes = false;
             if (!optionIds.isEmpty()) {
-                bandPollVoteRepository.deleteByPollOptionIdIn(optionIds);
+                List<BandPollVotes> votes = bandPollVoteRepository.findByPollOptionIdIn(optionIds);
+                if (votes != null && !votes.isEmpty()) {
+                    hasVotes = true;
+                }
             }
-            bandPollOptionRepository.deleteByPollId(poll.getId());
-            bandPollRepository.delete(poll);
+            
+            if (hasVotes) {
+                // 이미 투표가 진행 중이므로 기존 투표를 유지
+                keepExistingPoll[0] = true;
+            } else {
+                // 투표가 진행되지 않았으므로 삭제
+                if (!optionIds.isEmpty()) {
+                    bandPollVoteRepository.deleteByPollOptionIdIn(optionIds);
+                }
+                bandPollOptionRepository.deleteByPollId(poll.getId());
+                bandPollRepository.delete(poll);
+            }
         });
 
         // 새 투표 생성
-        if (request.getPoll() != null && request.getPoll().getTitle() != null && !request.getPoll().getTitle().isEmpty()) {
+        if (!keepExistingPoll[0] && request.getPoll() != null && request.getPoll().getTitle() != null && !request.getPoll().getTitle().isEmpty()) {
             BandPolls poll = BandPolls.builder()
                     .postId(postId)
                     .title(request.getPoll().getTitle())
@@ -641,34 +650,97 @@ public class BandService {
         BandPost post = bandPostRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 게시글입니다."));
         
+        // 대댓글인 경우 부모 댓글 검증
+        if (request.getParentId() != null) {
+            com.ourband.api.domain.model.BandPostComment parentComment = bandPostCommentRepository.findById(request.getParentId())
+                    .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 부모 댓글입니다."));
+            if (!parentComment.getPostId().equals(postId)) {
+                throw new IllegalArgumentException("부모 댓글이 해당 게시글에 속하지 않습니다.");
+            }
+        }
+
         com.ourband.api.domain.model.BandPostComment comment = com.ourband.api.domain.model.BandPostComment.builder()
                 .postId(postId)
                 .userId(currentUserId)
                 .content(request.getContent())
+                .parentId(request.getParentId())
                 .build();
         
         com.ourband.api.domain.model.BandPostComment saved = bandPostCommentRepository.save(comment);
         
         post.setCommentCount(post.getCommentCount() + 1);
 
-        User author = userRepository.findById(currentUserId).orElse(null);
-        String authorName = author != null ? author.getNickname() : "알 수 없음";
-        String profileImageUrl = null;
-        if (author != null) {
-            Profile profile = profileRepository.findByUser_UserId(author.getUserId()).orElse(null);
-            if (profile != null) {
-                profileImageUrl = profile.getProfilePictureUrl();
+        return mapCommentToDTO(saved);
+    }
+
+    /**
+     * 댓글 수정 (작성자 본인만 가능)
+     */
+    @Transactional
+    public BandPostCommentResponseDTO updateComment(Long commentId, Long currentUserId, String content) {
+        com.ourband.api.domain.model.BandPostComment comment = bandPostCommentRepository.findById(commentId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 댓글입니다."));
+
+        if (!comment.getUserId().equals(currentUserId)) {
+            throw new IllegalArgumentException("수정 권한이 없습니다.");
+        }
+
+        comment.setContent(content);
+        bandPostCommentRepository.save(comment);
+
+        return mapCommentToDTO(comment);
+    }
+
+    /**
+     * 댓글 삭제 (작성자 본인만 가능)
+     */
+    @Transactional
+    public void deleteComment(Long commentId, Long currentUserId) {
+        com.ourband.api.domain.model.BandPostComment comment = bandPostCommentRepository.findById(commentId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 댓글입니다."));
+
+        if (!comment.getUserId().equals(currentUserId)) {
+            throw new IllegalArgumentException("삭제 권한이 없습니다.");
+        }
+
+        BandPost post = bandPostRepository.findById(comment.getPostId()).orElse(null);
+        if (post != null) {
+            post.setCommentCount(Math.max(0, post.getCommentCount() - 1));
+        }
+
+        bandPostCommentRepository.delete(comment);
+    }
+
+    /**
+     * 댓글 → DTO 변환 헬퍼 (대댓글 재귀 포함)
+     */
+    private BandPostCommentResponseDTO mapCommentToDTO(com.ourband.api.domain.model.BandPostComment c) {
+        User cAuthor = userRepository.findById(c.getUserId()).orElse(null);
+        String cAuthorName = cAuthor != null ? cAuthor.getNickname() : "알 수 없음";
+        String cProfileImageUrl = null;
+        if (cAuthor != null) {
+            Profile cProfile = profileRepository.findByUser_UserId(cAuthor.getUserId()).orElse(null);
+            if (cProfile != null) {
+                cProfileImageUrl = cProfile.getProfilePictureUrl();
             }
         }
 
+        List<com.ourband.api.domain.model.BandPostComment> replyEntities = bandPostCommentRepository.findByParentIdOrderByCreatedAtAsc(c.getId());
+        List<BandPostCommentResponseDTO> replies = replyEntities.stream()
+                .map(this::mapCommentToDTO)
+                .toList();
+
         return BandPostCommentResponseDTO.builder()
-                .id(saved.getId())
-                .postId(saved.getPostId())
-                .authorId(saved.getUserId())
-                .authorName(authorName)
-                .authorProfileImageUrl(profileImageUrl)
-                .content(saved.getContent())
-                .createdAt(saved.getCreatedAt())
+                .id(c.getId())
+                .postId(c.getPostId())
+                .authorId(c.getUserId())
+                .authorName(cAuthorName)
+                .authorProfileImageUrl(cProfileImageUrl)
+                .content(c.getContent())
+                .createdAt(c.getCreatedAt())
+                .updatedAt(c.getUpdatedAt())
+                .parentId(c.getParentId())
+                .replies(replies)
                 .build();
     }
     /**

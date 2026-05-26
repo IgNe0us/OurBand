@@ -9,5 +9,7 @@ import java.util.List;
 @Repository
 public interface BandPostCommentRepository extends JpaRepository<BandPostComment, Long> {
     List<BandPostComment> findByPostIdOrderByCreatedAtAsc(Long postId);
+    List<BandPostComment> findByPostIdAndParentIdIsNullOrderByCreatedAtAsc(Long postId);
+    List<BandPostComment> findByParentIdOrderByCreatedAtAsc(Long parentId);
     void deleteAllByPostId(Long postId);
 }
