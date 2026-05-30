@@ -6,7 +6,7 @@ import { UserProfileModal } from "@/components/common/UserProfileModal";
 import { LayoutContext } from "@/components/layout/AppLayout";
 
 import React, { useState } from "react";
-import { Settings, Share, Music2, Edit3, Play, MapPin, CalendarDays, Zap, AtSign, Menu, X, LogOut, Bell, Shield, Users, Plus, Trash2, Check, UserMinus, GuitarIcon, Guitar } from "lucide-react";
+import { Settings, Share, Music2, Edit3, Play, MapPin, CalendarDays, Zap, AtSign, Menu, X, LogOut, Bell, Shield, Users, Plus, Trash2, Check, UserMinus, GuitarIcon, Guitar, User, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -14,6 +14,7 @@ import type { LayoutContextType } from "@/components/layout/AppLayout";
 import { AnimatePresence, motion } from "motion/react";
 import { addFavoriteMusicApi, addGearApi, addHistoryApi, deleteFavoriteMusicApi, deleteGearApi, deleteHistoryApi, getUserInfoApi, logoutApi, updateProfileApi, updateProfileImageApi, getFollowersApi, getFollowingsApi, toggleFollowApi, type FollowUser } from "@/api/account/userService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
+import { getUserJamPostsApi, createJamPostApi, deleteJamPostApi, type JamPostData } from "@/api/jam/jamService";
 
 interface Band {
   bandId: number;
@@ -60,7 +61,8 @@ export default function ProfilePage() {
   const [location, setLocation] = useState("");
   const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"Favorite Music" | "History" | "Gear">("Favorite Music");
+  const [activeTab, setActiveTab] = useState<"좋아하는 곡" | "히스토리" | "내 오디오잼" | "내 장비">("좋아하는 곡");
+  const [myJams, setMyJams] = useState<JamPostData[]>([]);
   const { openMenu } = useContext(LayoutContext);
   const [isEditing, setIsEditing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -364,23 +366,63 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await getUserInfoApi();
-        setProfileData(response);
-        if (response) {
-          setInstrument(response.instrument);
-          setLocation(response.location);
-          setBio(response.bio);
-        }
+        const response = await getUserInfoApi()
+          .then(data => {
+            setProfileData(data);
+            setBio(data.bio || "");
+            setInstrument(data.instrument || "");
+            setLocation(data.location || "");
+            setLoading(false);
+          })
+          .catch(err => {
+            console.error("Failed to load profile", err);
+            setLoading(false);
+          });
       } catch (error) {
         console.error("프로필 로드 실패:", error);
-      } finally {
         setLoading(false);
       }
     };
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (activeTab === "내 오디오잼" && profileData) {
+      getUserJamPostsApi(profileData.userId).then(res => setMyJams(res.content)).catch(console.error);
+    }
+  }, [activeTab, profileData]);
+
+  const handlePublishToJam = async (history: History) => {
+    if (!history.mediaUrl) return;
+    try {
+      await createJamPostApi({
+        title: history.title,
+        description: history.content,
+        mediaUrl: history.mediaUrl,
+        instrument: profileData?.instrument || "기타",
+        genre: "기타",
+        originalVolume: 1.0,
+        myVolume: 1.0
+      });
+      alert("오디오잼 보드로 성공적으로 발행되었습니다!");
+      setActiveTab("내 오디오잼");
+    } catch (err) {
+      alert("오디오잼 발행 중 오류가 발생했습니다.");
+    }
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-white">로딩중...</div>;
+  const handleDeleteJam = async (jamId: number) => {
+    if (!confirm("오디오잼 영상을 삭제하시겠습니까?")) return;
+    try {
+      await deleteJamPostApi(jamId);
+      setMyJams(prev => prev.filter(j => j.id !== jamId));
+    } catch (err) {
+      console.error(err);
+      alert("삭제에 실패했습니다.");
+    }
+  };
+
   if (!profileData) return <div className="min-h-screen flex items-center justify-center text-white">데이터를 불러올 수 없습니다.</div>;
 
   return (
@@ -393,10 +435,11 @@ export default function ProfilePage() {
         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <Edit3 className="text-white" />
         </div>
-        <img 
-          src={profileData.coverImageUrl || "https://picsum.photos/seed/myprofilecover/800/400"} 
-          className="w-full h-full object-cover opacity-50" alt="Cover" 
-          />
+        {profileData.coverImageUrl ? (
+          <img src={profileData.coverImageUrl} className="w-full h-full object-cover opacity-50" alt="Cover" />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 opacity-50" />
+        )}
         {/* 커버용 input (여기에 coverInputRef 연결!) */}
         <input 
           type="file" 
@@ -450,7 +493,13 @@ export default function ProfilePage() {
             className="w-28 h-28 md:w-36 md:h-36 rounded-full border-4 border-background bg-slate-800 overflow-hidden shadow-2xl relative group cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
           >
-            <img src={profileData.profilePictureUrl || "https://picsum.photos/seed/george/200/200"} className="w-full h-full object-cover" alt="Profile" />
+            {profileData.profilePictureUrl ? (
+              <img src={profileData.profilePictureUrl} className="w-full h-full object-cover" alt="Profile" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                <User size={48} className="text-slate-500" />
+              </div>
+            )}
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
               <Edit3 className="text-white" />
             </div>
@@ -507,7 +556,13 @@ export default function ProfilePage() {
                 {profileData.bands.map((band) => (
                 <div key={band.bandId} className="flex items-center gap-4 p-4 rounded-2xl bg-secondary border border-border hover:border-primary/50 transition-colors cursor-pointer group">
                   <div className="w-12 h-12 rounded-xl border-2 border-background overflow-hidden bg-slate-800 relative shrink-0">
-                     <img src={band.logoImageUrl || "https://picsum.photos/seed/bandlogo/100/100"} className="w-full h-full object-cover" alt="Band" referrerPolicy="no-referrer" />
+                     {band.logoImageUrl ? (
+                       <img src={band.logoImageUrl} className="w-full h-full object-cover" alt="Band" referrerPolicy="no-referrer" />
+                     ) : (
+                       <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                         <Users size={24} className="text-slate-500" />
+                       </div>
+                     )}
                   </div>
                   <div className="flex flex-col flex-1">
                     <span className="text-white font-bold text-sm group-hover:text-primary transition-colors">{band.bandName}</span>
@@ -543,7 +598,7 @@ export default function ProfilePage() {
           <div className="lg:col-span-2">
             {/* Sleek Tab Navigation */}
             <div className="flex border-b border-border mb-6">
-              {["Favorite Music", "History", "Gear"].map((tab) => (
+              {["좋아하는 곡", "히스토리", "내 오디오잼", "내 장비"].map((tab) => (
                 <button 
                   key={tab}
                   onClick={() => setActiveTab(tab as any)}
@@ -561,7 +616,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Tab Content */}
-            {activeTab === "Favorite Music" && (
+            {activeTab === "좋아하는 곡" && (
               <div className="bg-secondary border border-border rounded-2xl p-2 shadow-xl">
 
                 {profileData.favoriteMusics.length === 0 ? (
@@ -594,7 +649,7 @@ export default function ProfilePage() {
               </div>
             )}
             
-            {activeTab === "History" && (
+            {activeTab === "히스토리" && (
               <div className="bg-secondary border border-border rounded-2xl p-2 shadow-xl">
                 
                 {profileData.histories.length === 0 ? (
@@ -645,11 +700,9 @@ export default function ProfilePage() {
                             )
                           ) : (
                             // 텍스트만 있는 포스트일 때 보여줄 기본 더미 이미지
-                            <img 
-                              src={`https://picsum.photos/seed/history${history.id}/600/800`} 
-                              className="w-full h-full object-cover opacity-50" 
-                              alt="default-history" 
-                            />
+                            <div className="w-full h-full flex items-center justify-center bg-slate-800 opacity-50">
+                              <Music2 size={32} className="text-slate-500" />
+                            </div>
                           )}
 
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent group-hover:bg-black/40 transition-colors" />
@@ -669,15 +722,27 @@ export default function ProfilePage() {
                           <p className="text-xs text-slate-400 line-clamp-2">{history.content}</p>
                         </div>
 
-                        <button 
-                          onClick={(e) => { 
-                            e.stopPropagation(); // 💡 카드 클릭(상세보기 모달 열림) 이벤트가 터지는 현상 철저히 방어!
-                            handleDeleteHistory(history.id); // 💡 연동 완료
-                          }}
-                          className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/80 z-10"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="absolute top-2 right-2 flex gap-2 z-10 opacity-0 group-hover:opacity-100 transition-all">
+                          {isVideo && (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handlePublishToJam(history); }}
+                              className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white hover:bg-primary/90 shadow-md"
+                              title="오디오잼으로 발행하기"
+                            >
+                              <Music2 size={16} />
+                            </button>
+                          )}
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation();
+                              handleDeleteHistory(history.id);
+                            }}
+                            className="w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-500/80 transition-all"
+                            title="삭제"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -685,7 +750,60 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {activeTab === "Gear" && (
+            {activeTab === "내 오디오잼" && (
+              <div className="bg-secondary border border-border rounded-2xl p-2 shadow-xl">
+                {myJams.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500">
+                    <Music2 size={48} className="mx-auto mb-4 opacity-20" />
+                    <p className="font-medium text-lg text-slate-400 mb-2">아직 오디오잼이 없습니다</p>
+                    <p className="text-sm">포트폴리오 영상으로 오디오잼에 참여해보세요!</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {myJams.map((jam, i) => (
+                      <div 
+                        key={jam.id}
+                        onClick={() => navigate(`/jam?id=${jam.id}`)}
+                        className="group relative bg-background rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary transition-all aspect-[9/16]"
+                      >
+                        <div className="absolute inset-0 bg-slate-800">
+                          {jam.mediaUrl ? (
+                            <video src={jam.mediaUrl} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-500">
+                              <Music2 size={32} />
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteJam(jam.id);
+                          }}
+                          className="absolute top-2 right-2 p-2 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all z-10"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
+                          {jam.parentId && jam.originalAuthorName && (
+                            <span className="text-[10px] font-bold text-primary bg-primary/20 px-2 py-0.5 rounded-full w-max mb-1 border border-primary/30">
+                              @{jam.originalAuthorName} 와 듀엣
+                            </span>
+                          )}
+                          <h4 className="text-sm font-bold text-white line-clamp-1 mb-1">{jam.title}</h4>
+                          <div className="flex gap-2 text-slate-400 text-xs">
+                            <span className="flex items-center gap-1"><Play size={10} /> {jam.viewCount}</span>
+                            <span className="flex items-center gap-1"><Heart size={10} /> {jam.likeCount}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "내 장비" && (
               <div className="bg-secondary border border-border rounded-2xl p-2 shadow-xl">
                  {profileData.gears.length === 0 ? (
                    <div className="text-center py-12 text-slate-500">

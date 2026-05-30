@@ -5,6 +5,14 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { getUserInfoApi } from '@/api/account/userService';
 import { getBandPostApi, toggleLikeApi, createBandPostCommentApi, updateCommentApi, deleteCommentApi } from '@/api/band/bandService';
+export type VideoPost = {
+  id: string | number;
+  title: string;
+  description?: string;
+  thumbnail?: string;
+  videoUrl?: string;
+  date?: string;
+};
 
 interface VideoPostModalProps {
   isOpen: boolean;
@@ -47,7 +55,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
   const fetchPost = async () => {
     setLoading(true);
     try {
-      const data = await getBandPostApi(postId);
+      const data = await getBandPostApi(postId!);
       setPost({
         id: data.id,
         title: data.title,
@@ -95,7 +103,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
     
     setIsSubmittingComment(true);
     try {
-      const newComment = await createBandPostCommentApi(bandId || 1, postId, { content: commentText.trim(), parentId: null });
+      const newComment = await createBandPostCommentApi(bandId || 1, postId!, { content: commentText.trim(), parentId: null });
       setPost((prev: any) => prev ? {
         ...prev,
         commentCount: prev.commentCount + 1,
@@ -113,7 +121,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
   const handleReplySubmit = async (parentId: number) => {
     if (!replyText.trim() || !post) return;
     try {
-      const newReply = await createBandPostCommentApi(bandId || 1, postId, { content: replyText.trim(), parentId });
+      const newReply = await createBandPostCommentApi(bandId || 1, postId!, { content: replyText.trim(), parentId });
       setPost((prev: any) => {
         if (!prev) return prev;
         const addReplyToComments = (comments: any[]): any[] => {
@@ -144,7 +152,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
   const handleEditComment = async (commentId: number) => {
     if (!editText.trim() || !post) return;
     try {
-      const updated = await updateCommentApi(bandId || 1, postId, commentId, { content: editText.trim() });
+      const updated = await updateCommentApi(bandId || 1, postId!, commentId, { content: editText.trim() });
       setPost((prev: any) => {
         if (!prev) return prev;
         const updateInComments = (comments: any[]): any[] => {
@@ -171,7 +179,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
   const handleDeleteComment = async (commentId: number) => {
     if (!confirm("댓글을 삭제하시겠습니까?") || !post) return;
     try {
-      await deleteCommentApi(bandId || 1, postId, commentId);
+      await deleteCommentApi(bandId || 1, postId!, commentId);
       setPost((prev: any) => {
         if (!prev) return prev;
         let removedCount = 0;
@@ -307,7 +315,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex flex-col md:items-center justify-end md:justify-center bg-black/80 backdrop-blur-md">
+      <div className="fixed inset-0 z-[110] flex flex-col md:items-center justify-end md:justify-center bg-black/80 backdrop-blur-md">
         <motion.div
           initial={{ opacity: 0, y: 100 }}
           animate={{ opacity: 1, y: 0 }}

@@ -3,7 +3,7 @@ import { useContext, useState, useEffect } from "react";
 import { ReportModal } from "@/components/common/ReportModal";
 import { CommunityWritePostModal } from "@/components/post/CommunityWritePostModal";
 import { LayoutContext } from "@/components/layout/AppLayout";
-import { getCommunityPostsApi, getCommunityPostApi, createCommunityPostApi, updateCommunityPostApi, deleteCommunityPostApi } from "@/api/community/communityService";
+import { getCommunityPostsApi, getCommunityPostApi, createCommunityPostApi, updateCommunityPostApi, deleteCommunityPostApi, type CommunityPostData } from "@/api/community/communityService";
 import { MessageCircle, HeartHandshake, PenTool, Search, MessageSquare, ThumbsUp, MoreHorizontal, Menu, Flag, Edit3, Trash2 } from "lucide-react";
 import { useRouter, usePathname } from 'next/navigation';
 import { getUserInfoApi } from '@/api/account/userService';
@@ -144,7 +144,7 @@ export default function CommunityCategoryPage() {
         mediaType = undefined;
       }
 
-      await updateCommunityPostApi(editingPost.id, {
+      await updateCommunityPostApi(editingPost.id!, {
         ...data,
         mediaUrl,
         mediaType
@@ -275,7 +275,7 @@ export default function CommunityCategoryPage() {
                         onClick={async (e) => { 
                           e.stopPropagation(); 
                           try {
-                            const fullPost = await getCommunityPostApi(post.id);
+                            const fullPost = await getCommunityPostApi(post.id!);
                             setEditingPost({
                               ...post,
                               content: fullPost.content,
@@ -292,7 +292,7 @@ export default function CommunityCategoryPage() {
                         <Edit3 size={14} />
                       </button>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id!); }}
                         className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5"
                         title="삭제"
                       >
@@ -379,14 +379,14 @@ export default function CommunityCategoryPage() {
         <CommunityWritePostModal 
           isOpen={isEditModalOpen}
           onClose={() => { setIsEditModalOpen(false); setEditingPost(null); }}
-          defaultBoard={editingPost.boardType}
+          defaultBoard={editingPost.boardType || ""}
           initialData={{
             id: editingPost.id,
-            boardType: editingPost.boardType,
-            category: editingPost.category,
-            part: editingPost.part,
-            title: editingPost.title,
-            content: editingPost.content,
+            boardType: editingPost.boardType || "",
+            category: editingPost.category || "",
+            part: editingPost.part || "",
+            title: editingPost.title || "",
+            content: editingPost.content || "",
             mediaUrl: editingPost.mediaUrl,
             mediaType: editingPost.mediaType,
             poll: editingPost.poll

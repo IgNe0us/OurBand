@@ -1,12 +1,35 @@
 "use client";
 // @ts-nocheck
-import { X, Camera, Save, Plus, Trash2, UserPlus, Loader2 } from "lucide-react";
+import { X, Camera, Save, Plus, Trash2, UserPlus, Loader2, AlertTriangle, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { uploadToCloudflare } from "@/lib/cloudflare";
 
-import { type BandProfileData, type BandHistory, type BandPositionData as BandPosition } from "@/api/band/bandService";
+import { type BandProfileData, type BandHistory, type BandPositionData as BandPosition, deleteBandApi } from "@/api/band/bandService";
+import { useRouter } from "next/navigation";
+
+const KOREA_REGIONS: Record<string, string[]> = {
+  "전국": [],
+  "서울특별시": ["전체", "강남구", "강동구", "강북구", "강서구", "관악구", "광진구", "구로구", "금천구", "노원구", "도봉구", "동대문구", "동작구", "마포구", "서대문구", "서초구", "성동구", "성북구", "송파구", "양천구", "영등포구", "용산구", "은평구", "종로구", "중구", "중랑구"],
+  "경기도": ["전체", "수원시", "고양시", "용인시", "성남시", "부천시", "안산시", "화성시", "남양주시", "안양시", "평택시", "의정부시", "파주시", "시흥시", "김포시", "광명시", "광주시", "군포시", "이천시", "오산시", "하남시", "양주시", "구리시", "안성시", "포천시", "의왕시", "여주시", "양평군", "동두천시", "과천시", "가평군", "연천군"],
+  "인천광역시": ["전체", "계양구", "남동구", "동구", "미추홀구", "부평구", "서구", "연수구", "중구", "강화군", "옹진군"],
+  "강원특별자치도": ["전체", "춘천시", "원주시", "강릉시", "동해시", "태백시", "속초시", "삼척시", "홍천군", "횡성군", "영월군", "평창군", "정선군", "철원군", "화천군", "양구군", "인제군", "고성군", "양양군"],
+  "충청남도": ["전체", "천안시", "공주시", "보령시", "아산시", "서산시", "논산시", "계룡시", "당진시", "금산군", "부여군", "서천군", "청양군", "홍성군", "예산군", "태안군"],
+  "충청북도": ["전체", "청주시", "충주시", "제천시", "보은군", "옥천군", "영동군", "증평군", "진천군", "괴산군", "음성군", "단양군"],
+  "대전광역시": ["전체", "대덕구", "동구", "서구", "유성구", "중구"],
+  "경상북도": ["전체", "포항시", "경주시", "김천시", "안동시", "구미시", "영주시", "영천시", "상주시", "문경시", "경산시", "군위군", "의성군", "청송군", "영양군", "영덕군", "청도군", "고령군", "성주군", "칠곡군", "예천군", "봉화군", "울진군", "울릉군"],
+  "경상남도": ["전체", "창원시", "진주시", "통영시", "사천시", "김해시", "밀양시", "거제시", "양산시", "의령군", "함안군", "창녕군", "고성군", "남해군", "하동군", "산청군", "함양군", "거창군", "합천군"],
+  "대구광역시": ["전체", "남구", "달서구", "동구", "북구", "서구", "수성구", "중구", "달성군"],
+  "부산광역시": ["전체", "강서구", "금정구", "남구", "동구", "동래구", "부산진구", "북구", "사상구", "사하구", "서구", "수영구", "연제구", "영도구", "중구", "해운대구", "기장군"],
+  "울산광역시": ["전체", "남구", "동구", "북구", "중구", "울주군"],
+  "전라북도": ["전체", "전주시", "군산시", "익산시", "정읍시", "남원시", "김제시", "완주군", "진안군", "무주군", "장수군", "임실군", "순창군", "고창군", "부안군"],
+  "전라남도": ["전체", "목포시", "여수시", "순천시", "나주시", "광양시", "담양군", "곡성군", "구례군", "고흥군", "보성군", "화순군", "장흥군", "강진군", "해남군", "영암군", "무안군", "함평군", "영광군", "장성군", "완도군", "진도군", "신안군"],
+  "광주광역시": ["전체", "광산구", "남구", "동구", "북구", "서구"],
+  "세종특별자치시": ["전체"],
+  "제주특별자치도": ["전체", "제주시", "서귀포시"]
+};
+
 interface EditBandProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -18,6 +41,11 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
   const [formData, setFormData] = useState<BandProfileData>(initialData);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [showDisbandConfirm, setShowDisbandConfirm] = useState(false);
+  const [disbandConfirmText, setDisbandConfirmText] = useState("");
+  const router = useRouter();
+  const [loc1, setLoc1] = useState("전국");
+  const [loc2, setLoc2] = useState("전체");
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -33,8 +61,27 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
         ],
         history: initialData.history || []
       });
+
+      if (initialData.location && initialData.location !== "전국") {
+        const parts = initialData.location.split(" ");
+        setLoc1(parts[0]);
+        setLoc2(parts.slice(1).join(" ") || "전체");
+      } else {
+        setLoc1("전국");
+        setLoc2("전체");
+      }
     }
   }, [isOpen, initialData]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const finalLocation = loc1 === "전국" 
+      ? "전국" 
+      : loc2 === "전체" 
+        ? loc1 
+        : `${loc1} ${loc2}`;
+    setFormData(prev => ({ ...prev, location: finalLocation }));
+  }, [loc1, loc2, isOpen]);
 
   const handleChange = (field: keyof Omit<BandProfileData, "positions" | "history">, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -133,6 +180,22 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
     onClose();
   };
 
+  const handleDisbandBand = async () => {
+    if (disbandConfirmText !== formData.name) {
+      alert("밴드 이름이 일치하지 않습니다.");
+      return;
+    }
+    
+    try {
+      await deleteBandApi(formData.id!);
+      alert("밴드가 성공적으로 해체되었습니다.");
+      onClose();
+      router.push('/bands');
+    } catch (err: any) {
+      alert(err.response?.data?.message || "밴드 해체에 실패했습니다.");
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -150,7 +213,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
         >
           {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-border shrink-0 bg-secondary">
-            <h2 className="text-xl font-black text-white">밴드 프로필 수정</h2>
+            <h2 className="text-xl font-black text-white">밴드 관리</h2>
             <button onClick={onClose} className="p-2 text-slate-400 hover:text-white transition-colors">
               <X size={24} />
             </button>
@@ -167,7 +230,11 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                    onClick={() => !isUploadingCover && coverInputRef.current?.click()}
                    className="relative h-32 w-full bg-slate-800 rounded-xl overflow-hidden border border-border group cursor-pointer"
                  >
-                    <img src={formData.coverImage || "https://picsum.photos/seed/bandcover/800/400"} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                    {formData.coverImage ? (
+                      <img src={formData.coverImage} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 opacity-50 group-hover:opacity-30 transition-opacity" />
+                    )}
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
                       {isUploadingCover ? (
                         <Loader2 className="animate-spin text-white mb-1" size={24} />
@@ -191,7 +258,13 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                    onClick={() => !isUploadingLogo && logoInputRef.current?.click()}
                    className="relative h-20 w-20 bg-slate-800 rounded-xl overflow-hidden border border-border group cursor-pointer"
                  >
-                    <img src={formData.logoImage || "https://picsum.photos/seed/bandlogo/150/150"} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                    {formData.logoImage ? (
+                      <img src={formData.logoImage} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-800 opacity-50 group-hover:opacity-30 transition-opacity">
+                        <Users size={24} className="text-slate-500" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
                       {isUploadingLogo ? (
                         <Loader2 className="animate-spin text-white" size={16} />
@@ -244,13 +317,38 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                </div>
                <div>
                   <label className="block text-sm font-bold text-slate-400 mb-2">활동 지역</label>
-                  <input 
-                    type="text" 
-                    value={formData.location || ''}
-                    onChange={(e) => handleChange("location", e.target.value)}
-                    placeholder="예: 홍대 / 합정"
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-primary transition-colors"
-                  />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <select 
+                        value={loc1} 
+                        onChange={(e) => {
+                          setLoc1(e.target.value);
+                          setLoc2("전체");
+                        }}
+                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-medium text-white appearance-none focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                      >
+                        {Object.keys(KOREA_REGIONS).map(region => (
+                          <option key={region} value={region}>{region}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-xs">▼</div>
+                    </div>
+                    
+                    {loc1 !== "전국" && KOREA_REGIONS[loc1] && (
+                      <div className="relative flex-1">
+                        <select 
+                          value={loc2} 
+                          onChange={(e) => setLoc2(e.target.value)}
+                          className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-medium text-white appearance-none focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                        >
+                          {KOREA_REGIONS[loc1].map(subRegion => (
+                            <option key={subRegion} value={subRegion}>{subRegion}</option>
+                          ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-xs">▼</div>
+                      </div>
+                    )}
+                  </div>
                </div>
                <div>
                   <label className="block text-sm font-bold text-slate-400 mb-2">밴드 소개</label>
@@ -390,6 +488,52 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div className="space-y-4 pt-6 border-t border-border mt-8">
+              <div>
+                <label className="flex items-center gap-2 text-sm font-bold text-rose-500">
+                  <AlertTriangle size={16} /> Danger Zone
+                </label>
+                <p className="text-xs text-slate-400 mt-1">밴드 해체 시 모든 게시글, 멤버 정보, 신청 내역이 영구적으로 삭제되며 복구할 수 없습니다.</p>
+              </div>
+
+              {!showDisbandConfirm ? (
+                <button 
+                  onClick={() => setShowDisbandConfirm(true)}
+                  className="w-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/30 font-bold py-3 rounded-xl transition-colors text-sm"
+                >
+                  밴드 해체하기
+                </button>
+              ) : (
+                <div className="bg-rose-500/5 border border-rose-500/20 p-4 rounded-xl space-y-3">
+                  <p className="text-sm font-bold text-white text-center">정말 해체하시겠습니까?</p>
+                  <p className="text-xs text-slate-400 text-center mb-2">해체하려면 밴드 이름(<span className="text-rose-400 font-black">{formData.name}</span>)을 아래에 정확히 입력해 주세요.</p>
+                  <input 
+                    type="text" 
+                    value={disbandConfirmText}
+                    onChange={(e) => setDisbandConfirmText(e.target.value)}
+                    placeholder="밴드 이름 입력"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500 text-center"
+                  />
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => { setShowDisbandConfirm(false); setDisbandConfirmText(""); }}
+                      className="flex-1 bg-secondary text-slate-300 hover:text-white py-2.5 rounded-lg text-sm font-bold transition-colors"
+                    >
+                      취소
+                    </button>
+                    <button 
+                      onClick={handleDisbandBand}
+                      disabled={disbandConfirmText !== formData.name}
+                      className="flex-1 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-lg transition-colors text-sm shadow-[0_0_15px_rgba(244,63,94,0.2)]"
+                    >
+                      해체 확인
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
           </div>

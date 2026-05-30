@@ -13,74 +13,30 @@ import { motion, AnimatePresence } from "motion/react";
 import { RegisterStudioModal } from "@/components/studio/RegisterStudioModal";
 import { Map, MapMarker, Polyline, useKakaoLoader } from "react-kakao-maps-sdk";
 
-declare global {
-  interface Window {
-    kakao: any;
-  }
-}
 
-const generateWeekDates = () => {
-  const days = ["일", "월", "화", "수", "목", "금", "토"];
-  const week = [];
-  const today = new Date();
-  
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    
-    let label = days[d.getDay()];
-    if (i === 0) label = "오늘";
-    else if (i === 1) label = "내일";
-    
-    week.push({
-      date: d.getDate(),
-      label: label
-    });
-  }
-  return week;
-};
 
-const WEEK_DATES = generateWeekDates();
+import { getStudiosApi, type StudioData } from "@/api/studio/studioService";
 
-export interface StudioData extends MapStudio {
-  loc: string;
-  dist: string;
-  distKm?: number;
-  times?: string[];
-  img?: string;
+export interface ExtendedStudioData extends StudioData {
   isExternal?: boolean;
 }
 
-const PLATFORM_STUDIOS: StudioData[] = [
-  { id: 1, name: "사운드홀릭 합주실 Room A", loc: "홍대/합정", dist: "800m", rating: 4.8, times: ["19:00", "20:00", "21:00"], img: "studio1", lat: 37.5498, lng: 126.9150 },
-  { id: 2, name: "합정 뮤직트리 Room B", loc: "합정동", dist: "1.2km", rating: 4.5, times: ["22:00", "23:00"], img: "studio2", lat: 37.5470, lng: 126.9130 },
-  { id: 3, name: "블루노트 연습실 프리미엄", loc: "상수동", dist: "2.1km", rating: 4.9, times: ["18:00"], img: "studio3", lat: 37.5450, lng: 126.9200 },
-  { id: 4, name: "베이스캠프 스튜디오 1호점", loc: "서교동", dist: "3.5km", rating: 4.7, times: ["20:00", "21:00", "22:00"], img: "studio4", lat: 37.5520, lng: 126.9100 },
-  { id: 5, name: "어쿠스틱 갤러리 앙상블룸", loc: "신촌/이대", dist: "4.2km", rating: 4.6, times: ["14:00", "16:00"], img: "studio1", lat: 37.5560, lng: 126.9360 },
-  { id: 6, name: "제이스튜디오 대합주실", loc: "연남동", dist: "1.5km", rating: 4.9, times: ["19:00", "20:30"], img: "studio2", lat: 37.5620, lng: 126.9220 },
-  { id: 7, name: "이태원 잼스페이스", loc: "이태원동", dist: "6.5km", rating: 4.8, times: ["17:00", "18:00"], img: "studio3", lat: 37.5340, lng: 126.9940 },
-  { id: 8, name: "건대 아지트 합주실", loc: "건대입구", dist: "12.5km", rating: 4.4, times: ["18:00", "21:00"], img: "studio4", lat: 37.5400, lng: 127.0700 }, // 10km 초과
-  { id: 9, name: "전주대 근처 합주실", loc: "효자동", dist: "1.5km", rating: 4.7, times: ["18:00"], img: "studio1", lat: 35.8195, lng: 127.1011 }
-];
-
 export default function StudioPage() {
   const router = useRouter();
-  const navigate = (path: string) => router.push(path);;
-  const [selectedDate, setSelectedDate] = useState(0);
+  const navigate = (path: string) => router.push(path);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSOSModalOpen, setIsSOSModalOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   
   const [myLocation, setMyLocation] = useState<[number, number]>([37.5488, 126.9141]); // Default Hongdae
-  const [externalStudios, setExternalStudios] = useState<StudioData[]>([]);
+  const [platformStudios, setPlatformStudios] = useState<ExtendedStudioData[]>([]);
+  const [externalStudios, setExternalStudios] = useState<ExtendedStudioData[]>([]);
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedExternal, setSelectedExternal] = useState<StudioData | null>(null);
 
   const { openMenu } = useContext(LayoutContext);
-
-  const isBusinessAccount = true;
 
   const rawKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY as string || "";
   const sanitizedKey = rawKey.replace("NEXT_PUBLIC_KAKAO_MAP_APP_KEY=", "").trim();
@@ -149,7 +105,7 @@ export default function StudioPage() {
     const ps = new window.kakao.maps.services.Places();
     ps.keywordSearch("합주실", (data: any, status: any) => {
       if (status === window.kakao.maps.services.Status.OK) {
-        const results: StudioData[] = data.map((el: any) => {
+        const results: ExtendedStudioData[] = data.map((el: any) => {
           const lat = Number(el.y) || 0;
           const lng = Number(el.x) || 0;
           const distKm = getDistanceFromLatLonInKm(myLocation[0], myLocation[1], lat, lng);
@@ -157,15 +113,18 @@ export default function StudioPage() {
           return {
             id: `ext-${el.id}`,
             name: `${el.place_name} (외부 데이터)`,
-            loc: el.address_name,
+            address: el.address_name,
+            description: "",
+            amenities: "",
             dist: formatDistance(distKm),
             distKm,
             rating: Number((Math.random() * (5.0 - 3.5) + 3.5).toFixed(1)), // Mock rating
+            reviewCount: 0,
             lat,
             lng,
             isExternal: true
           };
-        }).sort((a: StudioData, b: StudioData) => (a.distKm || 0) - (b.distKm || 0));
+        }).sort((a: ExtendedStudioData, b: ExtendedStudioData) => (a.distKm || 0) - (b.distKm || 0));
         
         setExternalStudios(results);
       }
@@ -176,49 +135,40 @@ export default function StudioPage() {
     });
   };
 
-  // 카카오 로딩과 내 위치가 설정된 이후에 외부 지도 데이터를 가져옵니다.
+  const fetchPlatformStudios = async () => {
+    try {
+      const data = await getStudiosApi(myLocation[0], myLocation[1], 10);
+      const withDistance = data.map(studio => {
+        const distKm = getDistanceFromLatLonInKm(myLocation[0], myLocation[1], studio.lat, studio.lng);
+        return {
+          ...studio,
+          distKm,
+          dist: formatDistance(distKm)
+        };
+      });
+      setPlatformStudios(withDistance);
+    } catch (err) {
+      console.error("Failed to fetch platform studios", err);
+    }
+  };
+
+  // 지도 데이터 가져오기 (카카오 에러가 나도 자체 DB 합주실은 가져와야 함)
   useEffect(() => {
-    if (!loading && isKakaoAvailable && !isLoadingLocation) {
-      fetchExternalStudios();
+    if (!loading && !isLoadingLocation) {
+      if (isKakaoAvailable) {
+        fetchExternalStudios();
+      }
+      fetchPlatformStudios();
     }
   }, [loading, isKakaoAvailable, isLoadingLocation, myLocation]);
 
-  const platformWithDistance = PLATFORM_STUDIOS.map(studio => {
-    const distKm = getDistanceFromLatLonInKm(myLocation[0], myLocation[1], studio.lat, studio.lng);
-    return {
-      ...studio,
-      distKm,
-      dist: formatDistance(distKm)
-    };
-  });
-
-  const allStudios = [...platformWithDistance, ...externalStudios].sort((a, b) => (a.distKm || 0) - (b.distKm || 0));
+  const allStudios = [...platformStudios, ...externalStudios].sort((a, b) => (a.distKm || 0) - (b.distKm || 0));
 
   const filteredStudios = allStudios
-    .map(studio => {
-      // Mock random available times based on ID and Selected Date to simulate availability properly
-      if (!studio.isExternal) {
-        const hashStr = String(studio.id);
-        const hash = (hashStr.charCodeAt(0) || 0) + selectedDate;
-        let newTimes: string[] = [];
-        
-        if (hash % 4 === 0) newTimes = ["18:00", "19:00"];
-        else if (hash % 4 === 1) newTimes = ["20:00", "21:00", "22:00"];
-        else if (hash % 4 === 2) newTimes = ["15:00", "16:00"];
-        else newTimes = ["12:00", "14:00"];
-        
-        // 날짜가 넘어가면 일부 스튜디오는 예약이 이미 꽉 찬 상태(시간없음)를 무작위로 생성하여 필터링 효과
-        if (hash % 7 === 0) newTimes = []; 
-
-        return { ...studio, times: newTimes };
-      }
-      return studio;
-    })
     .filter(studio => 
       (studio.distKm !== undefined && studio.distKm <= 10) && // 10km 이내만 표시
-      (studio.isExternal || (studio.times && studio.times.length > 0)) &&
       (studio.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-       studio.loc.toLowerCase().includes(searchTerm.toLowerCase()))
+       studio.address.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
   return (
@@ -287,24 +237,7 @@ export default function StudioPage() {
             </div>
           </div>
 
-          {/* Date Selector */}
-          <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-4 -mx-6 px-6 md:mx-0 md:px-0">
-            {WEEK_DATES.map((dayItem, i) => (
-              <button 
-                key={i}
-                onClick={() => setSelectedDate(i)}
-                className={cn(
-                  "flex flex-col items-center justify-center min-w-[60px] md:min-w-[70px] py-3 rounded-2xl border transition-all",
-                  selectedDate === i 
-                    ? "bg-slate-800 text-white border-primary shadow-lg shadow-primary/20" 
-                    : "bg-secondary border-border text-slate-500 hover:bg-slate-800 shrink-0"
-                )}
-              >
-                <span className="text-xs font-medium mb-1">{dayItem.label}</span>
-                <span className={cn("text-lg font-black", selectedDate === i ? "text-primary" : "text-white")}>{dayItem.date}</span>
-              </button>
-            ))}
-          </div>
+          {/* Date Selector removed as booking feature is dropped */}
 
           {/* Map or List View */}
           {viewMode === "map" ? (
@@ -355,12 +288,16 @@ export default function StudioPage() {
                   }}
                 className="bg-secondary border border-border rounded-[1.5rem] p-3 flex gap-4 hover:border-slate-700 transition-colors cursor-pointer group"
               >
-                <div className="w-28 h-28 bg-slate-800 rounded-xl overflow-hidden shrink-0 relative">
-                  {studio.img ? (
-                    <img src={`https://picsum.photos/seed/${studio.img}/200/200`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Studio" referrerPolicy="no-referrer" />
-                  ) : (
+                  <div className="w-28 h-28 bg-slate-800 rounded-xl overflow-hidden shrink-0 relative">
+                  {studio.images && studio.images.length > 0 ? (
+                    <img src={studio.images[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Studio" referrerPolicy="no-referrer" />
+                  ) : studio.isExternal ? (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800 text-slate-500">
                       <MapPin size={24} />
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800 text-slate-500">
+                      <Building2 size={24} />
                     </div>
                   )}
                   <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-white/10">
@@ -377,24 +314,18 @@ export default function StudioPage() {
                       </h4>
                     </div>
                     <p className="text-xs text-slate-400 flex items-center gap-1 font-medium">
-                      <MapPin size={12} className="text-primary" /> {studio.loc} • {studio.dist}
+                      <MapPin size={12} className="text-primary" /> {studio.address} • {studio.dist}
                     </p>
                   </div>
                   
                   <div className="flex gap-2 flex-wrap mt-2">
-                    {!studio.isExternal && studio.times ? (
-                      studio.times.map(time => (
-                        <button 
-                          key={time} 
-                          onClick={(e) => { e.stopPropagation(); navigate(`/studio/${studio.id}`); }}
-                          className="text-[11px] font-semibold border border-border bg-slate-800 hover:bg-primary/20 hover:border-primary/50 hover:text-primary px-3 py-1.5 rounded-lg text-slate-300 transition-all"
-                        >
-                          {time}
-                        </button>
-                      ))
+                    {!studio.isExternal && studio.bookingUrl ? (
+                      <div className="text-[11px] text-primary flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20">
+                        <ExternalLink size={12} /> 예약 링크 제공
+                      </div>
                     ) : (
                       <div className="text-[11px] text-slate-500 flex items-center gap-1 bg-background px-3 py-1.5 rounded-lg border border-border">
-                        <ExternalLink size={12} /> 외부 합주실은 전화/방문 예약 
+                        <Navigation size={12} /> {studio.isExternal ? "외부 합주실" : "1:1 대화로 문의"}
                       </div>
                     )}
                   </div>
@@ -417,10 +348,6 @@ export default function StudioPage() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => {
-          if (!isBusinessAccount) {
-            alert("사업자 계정으로 접속했을 때만 합주실 등록이 가능합니다.");
-            return;
-          }
           setIsRegisterModalOpen(true);
         }}
         className="fixed bottom-24 right-5 md:bottom-10 md:right-10 bg-[#1e293b] border-2 border-primary text-white p-4 rounded-full shadow-[0_0_20px_rgba(99,102,241,0.5)] z-40 flex items-center gap-2 group"

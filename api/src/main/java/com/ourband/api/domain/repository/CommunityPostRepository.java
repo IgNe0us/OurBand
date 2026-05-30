@@ -14,7 +14,7 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, Lo
     @Query("SELECT p FROM CommunityPost p WHERE p.boardType = :boardType " +
            "AND (:category IS NULL OR :category = '전체' OR p.category = :category) " +
            "AND (:part IS NULL OR :part = '전체' OR p.part = :part) " +
-           "AND (:keyword IS NULL OR :keyword = '' OR p.title LIKE %:keyword% OR p.content LIKE %:keyword%) " +
+           "AND (:keyword IS NULL OR :keyword = '' OR p.title LIKE CONCAT('%', :keyword, '%') OR p.content LIKE CONCAT('%', :keyword, '%')) " +
            "AND (:isPopular = false OR (p.createdAt >= :popularSince AND (p.likeCount >= 5 OR p.commentCount >= 5)))")
     Page<CommunityPost> searchPosts(@Param("boardType") String boardType, 
                                     @Param("category") String category, 

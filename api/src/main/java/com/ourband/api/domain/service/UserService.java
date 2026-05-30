@@ -514,6 +514,15 @@ public class UserService {
     }
 
     // ========================================
+    // 💡 내 밴드 목록 조회 기능
+    // ========================================
+
+    @Transactional(readOnly = true)
+    public List<BandSimpleDTO> getMyBands(Long userId) {
+        return bandMemberRepository.findBandDetailsByUserId(userId);
+    }
+
+    // ========================================
     // 💡 팔로우 / 언팔로우 토글 기능
     // ========================================
 

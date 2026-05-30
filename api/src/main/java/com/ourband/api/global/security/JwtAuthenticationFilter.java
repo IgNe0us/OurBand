@@ -43,26 +43,34 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         // 2. 토큰 존재 + 유효성 검사
-        if (token != null && jwtUtil.validateToken(token)) {
+        if (token != null) {
+            System.out.println("[JwtAuthFilter] Token found in cookies: " + token);
+            if (jwtUtil.validateToken(token)) {
+                Long userId = jwtUtil.getUserId(token);
+                User user = userRepository.findById(userId).orElse(null);
+                
+                System.out.println("[JwtAuthFilter] Token is valid. UserId: " + userId + ", User found: " + (user != null));
 
-            Long userId = jwtUtil.getUserId(token);
+                if (user != null) {
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    user,
+                                    null,
+                                    List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                            );
 
-            User user = userRepository.findById(userId)
-                    .orElse(null);
-
-            if (user != null) {
-
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                user,
-                                null,
-                                List.of(new SimpleGrantedAuthority("ROLE_USER"))
-                        );
-
-                // 💡 여기가 핵심
-                SecurityContextHolder.getContext()
-                        .setAuthentication(authentication);
+                    // 💡 여기가 핵심
+                    SecurityContextHolder.getContext()
+                            .setAuthentication(authentication);
+                    System.out.println("[JwtAuthFilter] Successfully authenticated user: " + user.getEmail());
+                } else {
+                    System.out.println("[JwtAuthFilter] User not found in database!");
+                }
+            } else {
+                System.out.println("[JwtAuthFilter] Token is invalid or expired!");
             }
+        } else {
+            System.out.println("[JwtAuthFilter] No access_token cookie found in request to " + request.getRequestURI());
         }
 
         filterChain.doFilter(request, response);

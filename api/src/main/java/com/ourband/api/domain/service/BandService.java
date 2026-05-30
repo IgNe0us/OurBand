@@ -17,6 +17,11 @@ import com.ourband.api.domain.model.BandPollVotes;
 import com.ourband.api.domain.repository.BandPollRepository;
 import com.ourband.api.domain.repository.BandPollOptionRepository;
 import com.ourband.api.domain.repository.BandPollVoteRepository;
+import com.ourband.api.domain.repository.BandApplicationRepository;
+import com.ourband.api.domain.model.BandFollow;
+import com.ourband.api.domain.repository.BandFollowRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +47,8 @@ public class BandService {
     private final BandPollRepository bandPollRepository;
     private final BandPollOptionRepository bandPollOptionRepository;
     private final BandPollVoteRepository bandPollVoteRepository;
+    private final BandApplicationRepository bandApplicationRepository;
+    private final BandFollowRepository bandFollowRepository;
 
     /**
      * 밴드 상세 정보 및 포지션 멤버 조회
@@ -784,5 +791,288 @@ public class BandService {
                     .userId(currentUserId)
                     .build());
         }
+    }
+
+    // ========================================
+    // 💡 밴드 가입 신청 관리
+    // ========================================
+
+    @Transactional
+    public BandApplicationResponseDTO createApplication(Long bandId, Long currentUserId, BandApplicationRequestDTO request) {
+        if (bandApplicationRepository.existsByApplicantUserIdAndBandMemberIdAndStatus(currentUserId, request.getBandMemberId(), "PENDING")) {
+            throw new IllegalArgumentException("이미 대기 중인 신청이 있습니다.");
+        }
+        
+        com.ourband.api.domain.model.BandApplication app = com.ourband.api.domain.model.BandApplication.builder()
+                .bandId(bandId)
+                .bandMemberId(request.getBandMemberId())
+                .applicantUserId(currentUserId)
+                .message(request.getMessage())
+                .status("PENDING")
+                .build();
+                
+        return mapToAppResponse(bandApplicationRepository.save(app));
+    }
+
+    @Transactional(readOnly = true)
+    public List<BandApplicationResponseDTO> getMyApplications(Long currentUserId) {
+        return bandApplicationRepository.findByApplicantUserIdOrderByCreatedAtDesc(currentUserId).stream()
+                .map(this::mapToAppResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<BandApplicationResponseDTO> getBandApplications(Long bandId, Long currentUserId) {
+        // 밴드 멤버 권한 확인
+        List<BandMember> members = bandMemberRepository.findByBandId(bandId);
+        if (members.isEmpty()) {
+            throw new IllegalArgumentException("밴드 멤버 정보가 없습니다.");
+        }
+        boolean isMember = members.stream()
+                .anyMatch(m -> m.getUserId() != null && m.getUserId().equals(currentUserId));
+        if (!isMember) {
+            throw new IllegalArgumentException("밴드 멤버만 신청 목록을 볼 수 있습니다.");
+        }
+
+        return bandApplicationRepository.findByBandIdOrderByCreatedAtDesc(bandId).stream()
+                .map(this::mapToAppResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void acceptApplication(Long applicationId, Long currentUserId) {
+        com.ourband.api.domain.model.BandApplication app = bandApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("신청 내역을 찾을 수 없습니다."));
+                
+        // 방장 권한 확인
+        List<BandMember> members = bandMemberRepository.findByBandId(app.getBandId());
+        BandMember leader = members.stream()
+                .min(java.util.Comparator.comparing(BandMember::getId))
+                .orElse(members.get(0));
+        if (leader.getUserId() == null || !leader.getUserId().equals(currentUserId)) {
+            throw new IllegalArgumentException("권한이 없습니다.");
+        }
+        
+        app.accept();
+        
+        // 밴드 멤버 테이블의 해당 빈자리 user_id 채우기
+        BandMember memberSlot = bandMemberRepository.findById(app.getBandMemberId())
+                .orElseThrow(() -> new IllegalArgumentException("해당 모집 포지션이 존재하지 않습니다."));
+                
+        if (memberSlot.getUserId() != null) {
+            throw new IllegalArgumentException("이미 채워진 포지션입니다.");
+        }
+        
+        BandMember updatedSlot = BandMember.builder()
+                .id(memberSlot.getId())
+                .bandId(memberSlot.getBandId())
+                .userId(app.getApplicantUserId())
+                .role(memberSlot.getRole())
+                .status("JOINED")
+                .build();
+        bandMemberRepository.save(updatedSlot);
+    }
+
+    @Transactional
+    public void rejectApplication(Long applicationId, Long currentUserId, String reason) {
+        com.ourband.api.domain.model.BandApplication app = bandApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("신청 내역을 찾을 수 없습니다."));
+                
+        // 방장 권한 확인
+        List<BandMember> members = bandMemberRepository.findByBandId(app.getBandId());
+        BandMember leader = members.stream()
+                .min(java.util.Comparator.comparing(BandMember::getId))
+                .orElse(members.get(0));
+        if (leader.getUserId() == null || !leader.getUserId().equals(currentUserId)) {
+            throw new IllegalArgumentException("권한이 없습니다.");
+        }
+        
+        app.reject(reason);
+    }
+
+    private BandApplicationResponseDTO mapToAppResponse(com.ourband.api.domain.model.BandApplication app) {
+        Bands band = bandRepository.findById(app.getBandId()).orElse(null);
+        String bandName = band != null ? band.getName() : "알 수 없는 밴드";
+        String bandLogoUrl = band != null ? band.getLogoImageUrl() : null;
+        
+        BandMember memberSlot = bandMemberRepository.findById(app.getBandMemberId()).orElse(null);
+        String position = memberSlot != null ? memberSlot.getRole() : "알 수 없음";
+
+        User applicant = userRepository.findById(app.getApplicantUserId()).orElse(null);
+        String applicantName = applicant != null ? applicant.getNickname() : "알 수 없음";
+        
+        String applicantProfileImageUrl = null;
+        if (applicant != null) {
+            Profile profile = profileRepository.findByUser_UserId(applicant.getUserId()).orElse(null);
+            if (profile != null) {
+                applicantProfileImageUrl = profile.getProfilePictureUrl();
+            }
+        }
+
+        return BandApplicationResponseDTO.builder()
+                .id(app.getId())
+                .bandId(app.getBandId())
+                .bandName(bandName)
+                .bandLogoUrl(bandLogoUrl)
+                .bandMemberId(app.getBandMemberId())
+                .position(position)
+                .applicantUserId(app.getApplicantUserId())
+                .applicantName(applicantName)
+                .applicantProfileImageUrl(applicantProfileImageUrl)
+                .message(app.getMessage())
+                .status(app.getStatus())
+                .rejectReason(app.getRejectReason())
+                .createdAt(app.getCreatedAt())
+                .updatedAt(app.getUpdatedAt())
+                .build();
+    }
+
+    /**
+     * 밴드 목록 검색
+     */
+    public Page<BandListResponseDTO> searchBands(String genre, String location, String keyword,
+                                                  Boolean recruitingOnly, Boolean followedOnly,
+                                                  Long currentUserId, Pageable pageable) {
+        // Normalize filter params
+        String genreParam = (genre != null && !genre.isEmpty() && !genre.equals("전체 장르")) ? genre : null;
+        String locationParam = (location != null && !location.isEmpty() && !location.equals("전국") && !location.equals("전체 지역")) ? location : null;
+        String keywordParam = (keyword != null && !keyword.trim().isEmpty()) ? keyword.trim() : null;
+
+        Page<Bands> bandsPage = bandRepository.searchBands(genreParam, locationParam, keywordParam, pageable);
+
+        // Get followed band IDs for current user
+        List<Long> followedBandIds = new ArrayList<>();
+        if (currentUserId != null) {
+            followedBandIds = bandFollowRepository.findByUserId(currentUserId).stream()
+                    .map(BandFollow::getBandId)
+                    .toList();
+        }
+
+        final List<Long> finalFollowedIds = followedBandIds;
+
+        Page<BandListResponseDTO> result = bandsPage.map(band -> {
+            List<BandMember> members = bandMemberRepository.findByBandId(band.getId());
+
+            int memberCount = (int) members.stream().filter(m -> m.getUserId() != null).count();
+
+            List<BandListResponseDTO.RecruitingPosition> recruitingPositions = members.stream()
+                    .filter(m -> m.getUserId() == null)
+                    .map(m -> BandListResponseDTO.RecruitingPosition.builder()
+                            .id(m.getId())
+                            .role(m.getRole())
+                            .build())
+                    .toList();
+
+            boolean isRecruiting = !recruitingPositions.isEmpty();
+            boolean isFollowed = currentUserId != null && finalFollowedIds.contains(band.getId());
+            long followerCount = bandFollowRepository.countByBandId(band.getId());
+
+            return BandListResponseDTO.builder()
+                    .id(band.getId())
+                    .name(band.getName())
+                    .genre(band.getGenre())
+                    .location(band.getLocation())
+                    .description(band.getDescription())
+                    .logoImageUrl(band.getLogoImageUrl())
+                    .coverImageUrl(band.getCoverImageUrl())
+                    .meetingSchedule(band.getMeetingSchedule())
+                    .memberCount(memberCount)
+                    .recruitingPositions(recruitingPositions)
+                    .isRecruiting(isRecruiting)
+                    .isFollowed(isFollowed)
+                    .followerCount(followerCount)
+                    .createdAt(band.getCreatedAt())
+                    .build();
+        });
+
+        // Apply post-query filters
+        if (Boolean.TRUE.equals(recruitingOnly)) {
+            List<BandListResponseDTO> filtered = result.getContent().stream()
+                    .filter(BandListResponseDTO::isRecruiting)
+                    .toList();
+            return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+        }
+        if (Boolean.TRUE.equals(followedOnly) && currentUserId != null) {
+            List<BandListResponseDTO> filtered = result.getContent().stream()
+                    .filter(BandListResponseDTO::isFollowed)
+                    .toList();
+            return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+        }
+
+        return result;
+    }
+
+    /**
+     * 밴드 팔로우 토글
+     */
+    @Transactional
+    public boolean toggleFollow(Long bandId, Long currentUserId) {
+        Bands band = bandRepository.findById(bandId)
+                .orElseThrow(() -> new IllegalArgumentException("밴드를 찾을 수 없습니다."));
+
+        Optional<BandFollow> existing = bandFollowRepository.findByUserIdAndBandId(currentUserId, bandId);
+        if (existing.isPresent()) {
+            bandFollowRepository.delete(existing.get());
+            return false;
+        } else {
+            bandFollowRepository.save(BandFollow.builder()
+                    .userId(currentUserId)
+                    .bandId(bandId)
+                    .build());
+            return true;
+        }
+    }
+
+    @Transactional
+    public void leaveBand(Long bandId, Long currentUserId) {
+        List<BandMember> members = bandMemberRepository.findByBandId(bandId);
+        BandMember leader = members.stream()
+                .min(java.util.Comparator.comparing(BandMember::getId))
+                .orElseThrow(() -> new IllegalArgumentException("밴드 정보가 올바르지 않습니다."));
+
+        if (leader.getUserId() != null && leader.getUserId().equals(currentUserId)) {
+            throw new IllegalArgumentException("방장은 밴드를 탈퇴할 수 없습니다. 대신 밴드 해체를 이용해주세요.");
+        }
+
+        BandMember me = members.stream()
+                .filter(m -> m.getUserId() != null && m.getUserId().equals(currentUserId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("해당 밴드의 멤버가 아닙니다."));
+
+        me.leave();
+        bandMemberRepository.save(me);
+    }
+
+    @Transactional
+    public void deleteBand(Long bandId, Long currentUserId) {
+        List<BandMember> members = bandMemberRepository.findByBandId(bandId);
+        BandMember leader = members.stream()
+                .min(java.util.Comparator.comparing(BandMember::getId))
+                .orElseThrow(() -> new IllegalArgumentException("밴드 정보가 올바르지 않습니다."));
+
+        if (leader.getUserId() == null || !leader.getUserId().equals(currentUserId)) {
+            throw new IllegalArgumentException("방장만 밴드를 해체할 수 있습니다.");
+        }
+
+        // 고아 방지를 위해 수동 삭제 (실제 서비스에서는 상태 플래그 변경이 더 권장됨)
+        // 1. 밴드 관련 포스트 삭제 (댓글, 좋아요 등은 cascade 또는 별도 처리가 필요할 수 있으나 생략)
+        bandPostRepository.findByBandIdOrderByCreatedAtDesc(bandId).forEach(post -> {
+            bandPostCommentRepository.deleteAllByPostId(post.getId());
+            bandPostLikeRepository.deleteAllByPostId(post.getId());
+            bandPostRepository.delete(post);
+        });
+
+        // 2. 가입 신청 삭제
+        bandApplicationRepository.findByBandIdOrderByCreatedAtDesc(bandId)
+                .forEach(bandApplicationRepository::delete);
+
+        // 3. 밴드 팔로우 삭제
+        bandFollowRepository.deleteAllByBandId(bandId);
+
+        // 4. 멤버 삭제
+        bandMemberRepository.deleteAll(members);
+
+        // 5. 밴드 삭제
+        bandRepository.deleteById(bandId);
     }
 }

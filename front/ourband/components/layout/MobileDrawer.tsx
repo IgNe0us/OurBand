@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { usePathname } from "next/navigation";
-import { X, MessageCircle, HeartHandshake, PenTool, User, Search, Music, MapPin, Home, PlaySquare, AudioWaveform, Settings } from "lucide-react";
+import { X, MessageCircle, HeartHandshake, PenTool, User, Search, Music, MapPin, Home, PlaySquare, AudioWaveform, Settings, Bell, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { getUserInfoApi } from "@/api/account/userService";
@@ -58,9 +58,19 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
             </div>
             <span className="text-xl font-black tracking-tight text-white">OurBand</span>
           </div>
-          <button onClick={onClose} className="p-2 -mr-2 text-slate-400 hover:text-white transition-colors">
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/notifications" onClick={onClose} className="relative p-2 text-slate-400 hover:text-white transition-colors">
+              <Bell size={22} />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-secondary animate-pulse" />
+            </Link>
+            <Link href="/chat" onClick={onClose} className="relative p-2 text-slate-400 hover:text-white transition-colors mr-2">
+              <Send size={22} />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full border-2 border-secondary animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
+            </Link>
+            <button onClick={onClose} className="p-2 -mr-2 text-slate-400 hover:text-white transition-colors bg-white/5 rounded-xl">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-8">

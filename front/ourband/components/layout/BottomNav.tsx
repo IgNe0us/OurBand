@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { path: "/", label: "트렌드", icon: Home },
   { path: "/match", label: "매칭", icon: Search },
   { path: "/bands", label: "밴드", icon: Users },
-  { path: "/band", label: "구인/구직", icon: UserPlus },
+  { path: "/band", label: "멤버 찾기", icon: UserPlus },
   { path: "/jam", label: "잼", icon: Music },
   { path: "/studio", label: "합주실", icon: MapPin },
 ];

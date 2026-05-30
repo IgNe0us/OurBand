@@ -1,289 +1,289 @@
 "use client";
 
-// @ts-nocheck
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from 'next/navigation';
 import { 
-  ArrowLeft, Share2, Heart, MapPin, Star, Clock, 
-  Info, Speaker, Music, Check, CalendarIcon, ChevronRight
+  ArrowLeft, Share2, Heart, MapPin, Star, Info, Speaker, Check, MessageCircle, ExternalLink, ShieldAlert, Edit, Trash2, AlertTriangle, ChevronLeft, ChevronRight, X
 } from "lucide-react";
-import { motion } from "motion/react";
-import { cn } from "@/lib/utils";;
-
-// Mock data
-const STUDIO_INFO = {
-  id: "1",
-  name: "프리버드 합주실 본점",
-  address: "서울특별시 마포구 와우산로 123 지하 1층",
-  rating: 4.8,
-  reviewCount: 124,
-  description: "홍대입구역 도보 5분 거리의 쾌적하고 장비 관리가 잘 되어있는 프리미엄 합주실입니다. 넓은 로비와 휴게 공간이 마련되어 있습니다.",
-  images: [
-    "https://picsum.photos/seed/studio1/800/600",
-    "https://picsum.photos/seed/studio2/800/600",
-    "https://picsum.photos/seed/studio3/800/600",
-  ],
-  amenities: ["무료 Wi-Fi", "주차 공간(1대)", "냉난방기", "정수기/음료자판기", "전용 화장실"],
-  rooms: [
-    { 
-      id: "roomA", 
-      name: "A룸 (MAX 8인)", 
-      price: 18000, 
-      size: "6.5평",
-      equipment: ["Marshall JCM2000", "Fender Twin Reverb", "Ampeg SVT-4PRO", "Pearl Reference Drum", "Yamaha Motif XS8"] 
-    },
-    { 
-      id: "roomB", 
-      name: "B룸 (MAX 5인)", 
-      price: 15000, 
-      size: "4.5평",
-      equipment: ["Marshall DSL100", "Vox AC30", "Markbass Little Mark", "Tama Starclassic", "Kurzweil SP6"] 
-    },
-  ]
-};
-
-const TIME_SLOTS = [
-  { time: "10:00", available: false },
-  { time: "11:00", available: true },
-  { time: "12:00", available: true },
-  { time: "13:00", available: true },
-  { time: "14:00", available: false },
-  { time: "15:00", available: false },
-  { time: "16:00", available: true },
-  { time: "17:00", available: true },
-  { time: "18:00", available: true },
-  { time: "19:00", available: true },
-  { time: "20:00", available: true },
-  { time: "21:00", available: true },
-  { time: "22:00", available: true },
-];
-
-// Generate next 7 days for mock
-const DATES = Array.from({ length: 7 }, (_, i) => {
-  const d = new Date();
-  d.setDate(d.getDate() + i);
-  return {
-    date: d.getDate(),
-    day: ["일", "월", "화", "수", "목", "금", "토"][d.getDay()],
-    full: d.toISOString().split('T')[0]
-  };
-});
+import { motion, AnimatePresence } from "motion/react";
+import { cn } from "@/lib/utils";
+import { getStudioApi, deleteStudioApi, reportStudioApi, type StudioData } from "@/api/studio/studioService";
+import { getUserInfoApi } from "@/api/account/userService";
+import { RegisterStudioModal } from "@/components/studio/RegisterStudioModal";
 
 export default function StudioIdDynamicPage() {
-  const { studioId } = useParams();
+  const params = useParams();
+  const studioId = params?.id as string;
   const router = useRouter();
-  const navigate = (path: string) => router.push(path);;
   
+  const [studio, setStudio] = useState<StudioData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState(0);
-  const [selectedRoom, setSelectedRoom] = useState(STUDIO_INFO.rooms[0].id);
-  const [selectedDate, setSelectedDate] = useState(DATES[0].full);
-  const [selectedTimes, setSelectedTimes] = useState<string[]>([]);
   const [isLiked, setIsLiked] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
-  const activeRoom = STUDIO_INFO.rooms.find(r => r.id === selectedRoom) || STUDIO_INFO.rooms[0];
-  const totalPrice = activeRoom.price * selectedTimes.length;
+  useEffect(() => {
+    getUserInfoApi().then(user => {
+      if (user && user.userId) {
+        setCurrentUserId(user.userId);
+      }
+    }).catch(err => console.log('Not logged in'));
+  }, []);
 
-  const toggleTimeSlot = (time: string) => {
-    if (selectedTimes.includes(time)) {
-      setSelectedTimes(selectedTimes.filter(t => t !== time));
-    } else {
-      setSelectedTimes([...selectedTimes, time].sort());
-    }
-  };
-
-  const handleBooking = () => {
-    if (selectedTimes.length === 0) {
-      alert("예약할 시간을 선택해주세요.");
+  useEffect(() => {
+    if (!studioId) return;
+    
+    // 외부 데이터(카카오 지도)인 경우
+    if (studioId.startsWith('ext-')) {
+      setError("외부 지도 데이터는 상세 페이지를 지원하지 않습니다. 지도에서 위치만 확인할 수 있습니다.");
+      setLoading(false);
       return;
     }
-    alert(`[예약 완료]\n선택한 룸: ${activeRoom.name}\n시간: ${selectedTimes.join(", ")}\n총 결제금액: ${totalPrice.toLocaleString()}원`);
-    router.back();
-  };
+
+    getStudioApi(studioId)
+      .then(data => {
+        setStudio(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setError("합주실 정보를 불러오는데 실패했습니다.");
+        setLoading(false);
+      });
+  }, [studioId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col min-h-screen bg-background items-center justify-center">
+        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-slate-400 font-bold">합주실 정보를 불러오는 중...</p>
+      </div>
+    );
+  }
+
+  if (error || !studio) {
+    return (
+      <div className="flex flex-col min-h-screen bg-background items-center justify-center p-6">
+        <ShieldAlert size={48} className="text-red-500 mb-4" />
+        <h2 className="text-xl font-bold text-white mb-2">오류 발생</h2>
+        <p className="text-slate-400 text-center mb-6">{error}</p>
+        <button 
+          onClick={() => router.back()}
+          className="px-6 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition"
+        >
+          뒤로 가기
+        </button>
+      </div>
+    );
+  }
+
+  const amenitiesList = studio.amenities ? studio.amenities.split(',').map(s => s.trim()).filter(Boolean) : [];
+  
+  // Backend might send string[] or {imageUrl: string}[] depending on the API structure
+  const displayImages = studio.images && studio.images.length > 0 
+    ? studio.images.map((img: any) => typeof img === 'string' ? img : img.imageUrl)
+    : ["https://picsum.photos/seed/placeholder/800/600"]; // Placeholder if no image
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-28">
-      {/* Immersive Header / Gallery */}
-      <div className="relative h-64 md:h-80 lg:h-96 w-full bg-slate-900 group">
-        <img 
-          src={STUDIO_INFO.images[selectedImage]} 
-          alt="Studio view" 
-          className="w-full h-full object-cover opacity-80 transition-all duration-500"
-          referrerPolicy="no-referrer"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-black/50" />
-        
-        {/* Top Navigation Bar */}
-        <header className="absolute top-0 w-full px-4 py-4 md:px-8 md:py-6 z-20 flex justify-between items-center">
-          <button 
-            onClick={() => router.back()} 
-            className="w-10 h-10 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/50 transition-colors border border-white/10"
-          >
-            <ArrowLeft size={20} />
+      {/* Standard Header */}
+      <header className="sticky top-0 w-full px-4 py-4 md:px-8 md:py-6 z-30 flex justify-between items-center bg-background/80 backdrop-blur-md border-b border-border">
+        <button 
+          onClick={() => router.back()} 
+          className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white hover:bg-slate-700 transition-colors border border-border"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <div className="flex gap-2">
+          <button className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white hover:bg-slate-700 transition-colors border border-border">
+            <Share2 size={18} />
           </button>
-          <div className="flex gap-2">
-            <button className="w-10 h-10 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/50 transition-colors border border-white/10">
-              <Share2 size={18} />
-            </button>
-            <button 
-              onClick={() => setIsLiked(!isLiked)}
-              className="w-10 h-10 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/50 transition-colors border border-white/10"
-            >
-              <Heart size={18} className={cn(isLiked && "fill-rose-500 text-rose-500")} />
-            </button>
-          </div>
-        </header>
-
-        {/* Custom Image Paginator */}
-        <div className="absolute bottom-4 right-4 z-20 flex gap-1.5 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-          {STUDIO_INFO.images.map((_, idx) => (
-            <button 
-              key={idx}
-              onClick={() => setSelectedImage(idx)}
-              className={cn("w-1.5 h-1.5 rounded-full transition-all duration-300", selectedImage === idx ? "w-4 bg-primary" : "bg-white/50")}
-            />
-          ))}
+          <button 
+            onClick={() => setIsLiked(!isLiked)}
+            className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white hover:bg-slate-700 transition-colors border border-border"
+          >
+            <Heart size={18} className={cn(isLiked && "fill-rose-500 text-rose-500")} />
+          </button>
         </div>
-      </div>
+      </header>
 
-      <main className="px-5 md:px-8 max-w-4xl mx-auto w-full -mt-6 relative z-20 Space-y-6">
+      <main className="px-5 md:px-8 max-w-4xl mx-auto w-full pt-6 relative z-20 space-y-6">
         
         {/* Title Info Section */}
-        <div className="bg-secondary/80 backdrop-blur-xl border border-border p-6 rounded-3xl shadow-xl mb-8">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="bg-secondary/80 backdrop-blur-xl border border-border p-6 rounded-3xl shadow-xl mb-6 relative">
+          
+          {/* Action Buttons */}
+          <div className="absolute top-6 right-6 flex gap-2">
+            {studio.ownerId && currentUserId === studio.ownerId ? (
+              <>
+                <button 
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="p-2 text-slate-400 hover:text-primary transition-colors bg-background rounded-lg border border-border"
+                >
+                  <Edit size={16} />
+                </button>
+                <button 
+                  onClick={async () => {
+                    if (confirm("정말 이 합주실 정보를 삭제하시겠습니까?")) {
+                      try {
+                        await deleteStudioApi(studio.id);
+                        alert("삭제되었습니다.");
+                        router.push('/studio');
+                      } catch (err) {
+                        alert("삭제에 실패했습니다.");
+                      }
+                    }
+                  }}
+                  className="p-2 text-slate-400 hover:text-rose-500 transition-colors bg-background rounded-lg border border-border"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </>
+            ) : (
+              !studio.isExternal && (
+                <button 
+                  onClick={() => setIsReportModalOpen(true)}
+                  className="p-2 text-slate-400 hover:text-rose-500 transition-colors bg-background rounded-lg border border-border flex items-center gap-1 text-xs font-bold"
+                >
+                  <AlertTriangle size={14} /> 신고
+                </button>
+              )
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 mb-2 pr-20">
             <div className="flex items-center gap-1 text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded text-xs font-bold border border-amber-400/20">
               <Star size={12} className="fill-amber-400" />
-              <span>{STUDIO_INFO.rating}</span>
+              <span>{studio.rating || "0.0"}</span>
             </div>
-            <span className="text-xs text-slate-400 font-medium">리뷰 {STUDIO_INFO.reviewCount}개</span>
+            <span className="text-xs text-slate-400 font-medium">리뷰 {studio.reviewCount || 0}개</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-white mb-2 leading-tight tracking-tight">{STUDIO_INFO.name}</h1>
+          <h1 className="text-2xl md:text-3xl font-black text-white mb-2 leading-tight tracking-tight pr-20">{studio.name}</h1>
           <p className="text-slate-400 text-sm flex items-start gap-1.5 mb-5 font-medium leading-relaxed">
             <MapPin size={16} className="shrink-0 mt-0.5 text-primary" />
-            {STUDIO_INFO.address}
+            {studio.address}
           </p>
           <div className="h-px w-full bg-border/50 mb-5" />
-          <p className="text-sm text-slate-300 leading-relaxed font-medium">
-            {STUDIO_INFO.description}
+          <p className="text-sm text-slate-300 leading-relaxed font-medium whitespace-pre-wrap">
+            {studio.description || "등록된 소개글이 없습니다."}
           </p>
+        </div>
+
+        {/* Image Gallery Carousel */}
+        <div className="bg-secondary/40 border border-border rounded-3xl p-4 mb-6 shadow-sm">
+          <h3 className="text-lg font-black text-white mb-3 ml-2 flex items-center gap-2">
+            <Info size={18} className="text-primary"/>
+            시설 및 사진
+          </h3>
+          <div className="relative group overflow-hidden rounded-2xl border border-border/50 bg-black aspect-video flex items-center justify-center">
+            <img 
+              src={displayImages[selectedImage]} 
+              alt="Studio preview" 
+              className="max-w-full max-h-full object-contain cursor-pointer transition-transform duration-300 hover:scale-[1.02]"
+              referrerPolicy="no-referrer"
+              onClick={() => setIsLightboxOpen(true)}
+            />
+            
+            {/* Left Button */}
+            {displayImages.length > 1 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedImage(prev => prev === 0 ? displayImages.length - 1 : prev - 1);
+                }}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/80 transition-all opacity-0 group-hover:opacity-100 border border-white/10"
+              >
+                <ChevronLeft size={24} />
+              </button>
+            )}
+
+            {/* Right Button */}
+            {displayImages.length > 1 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedImage(prev => prev === displayImages.length - 1 ? 0 : prev + 1);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/80 transition-all opacity-0 group-hover:opacity-100 border border-white/10"
+              >
+                <ChevronRight size={24} />
+              </button>
+            )}
+
+            {/* Paginator Indicators */}
+            {displayImages.length > 1 && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+                {displayImages.map((_, idx) => (
+                  <button 
+                    key={idx}
+                    onClick={(e) => { e.stopPropagation(); setSelectedImage(idx); }}
+                    className={cn("w-1.5 h-1.5 rounded-full transition-all duration-300", selectedImage === idx ? "w-4 bg-primary" : "bg-white/50")}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Amenities Section */}
-        <div className="mb-8 p-1">
-          <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
-            <Info size={18} className="text-primary"/>
-            제공 시설
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {STUDIO_INFO.amenities.map(amenity => (
-              <span key={amenity} className="bg-secondary border border-border text-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm">
-                <Check size={12} className="text-primary" />
-                {amenity}
-              </span>
-            ))}
+        {amenitiesList.length > 0 && (
+          <div className="mb-8 p-1">
+            <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
+              <Info size={18} className="text-primary"/>
+              제공 시설
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {amenitiesList.map(amenity => (
+                <span key={amenity} className="bg-secondary border border-border text-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm">
+                  <Check size={12} className="text-primary" />
+                  {amenity}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Room Selection */}
-        <div className="mb-8 p-1">
-          <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
-            <Speaker size={18} className="text-primary"/>
-            룸 선택 및 장비 확인
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {STUDIO_INFO.rooms.map(room => (
-              <div 
-                key={room.id}
-                onClick={() => { setSelectedRoom(room.id); setSelectedTimes([]); }}
-                className={cn(
-                  "border rounded-2xl p-5 cursor-pointer transition-all duration-300",
-                  selectedRoom === room.id 
-                    ? "bg-primary/10 border-primary shadow-[0_0_20px_rgba(99,102,241,0.2)]" 
-                    : "bg-secondary border-border hover:border-slate-500"
-                )}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className={cn("text-lg font-black", selectedRoom === room.id ? "text-primary" : "text-white")}>{room.name}</h4>
-                  <span className="text-sm font-bold text-slate-300 bg-background/50 border border-border px-2 py-1 rounded-md">{room.size}</span>
+        {studio.rooms && studio.rooms.length > 0 && (
+          <div className="mb-8 p-1">
+            <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
+              <Speaker size={18} className="text-primary"/>
+              보유 룸 및 장비 안내
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {studio.rooms.map(room => (
+                <div 
+                  key={room.id}
+                  className="bg-secondary border-border border rounded-2xl p-5 hover:border-slate-500 transition-all duration-300"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <h4 className="text-lg font-black text-white">{room.name}</h4>
+                    <span className="text-sm font-bold text-slate-300 bg-background/50 border border-border px-2 py-1 rounded-md">{room.size}</span>
+                  </div>
+                  
+                  <ul className="space-y-1.5">
+                    {room.equipment ? room.equipment.split(',').map((eq, i) => (
+                      <li key={i} className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                        <div className="w-1 h-1 rounded-full bg-slate-600" />
+                        {eq.trim()}
+                      </li>
+                    )) : (
+                      <li className="text-xs font-medium text-slate-500">장비 정보가 없습니다.</li>
+                    )}
+                  </ul>
                 </div>
-                <p className="text-base font-bold text-white mb-4">
-                  {room.price.toLocaleString()}원 <span className="text-xs text-slate-500 font-medium font-sans">/ 시간</span>
-                </p>
-                <ul className="space-y-1.5">
-                  {room.equipment.slice(0, 3).map(eq => (
-                    <li key={eq} className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
-                      <div className="w-1 h-1 rounded-full bg-slate-600" />
-                      {eq}
-                    </li>
-                  ))}
-                  {room.equipment.length > 3 && (
-                    <li className="text-xs font-bold text-primary italic pt-1 pl-2">+ {room.equipment.length - 3}개의 장비 더보기</li>
-                  )}
-                </ul>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-
-        {/* Date & Time Selection (예약) */}
-        <div className="mb-8 bg-secondary/30 rounded-3xl p-5 md:p-6 border border-border">
-          <h3 className="text-lg font-black text-white mb-5 flex items-center gap-2">
-            <CalendarIcon size={18} className="text-primary"/>
-            일정 예약
-          </h3>
-          
-          {/* Date Picker (Horizontal) */}
-          <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-4 mb-2 -mx-2 px-2">
-            {DATES.map((d, i) => {
-              const isSelected = selectedDate === d.full;
-              const isWeekend = d.day === "토" || d.day === "일";
-              return (
-                <button
-                  key={d.full}
-                  onClick={() => { setSelectedDate(d.full); setSelectedTimes([]); }}
-                  className={cn(
-                    "flex flex-col items-center justify-center min-w-[60px] h-20 rounded-2xl border transition-all shrink-0",
-                    isSelected 
-                      ? "bg-primary border-primary text-white shadow-lg shadow-primary/25" 
-                      : "bg-secondary border-border text-slate-400 hover:border-slate-500"
-                  )}
-                >
-                  <span className={cn("text-xs font-bold mb-1", isWeekend && !isSelected && "text-rose-400")}>{d.day}</span>
-                  <span className="text-lg font-black">{d.date}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="h-px w-full bg-border mb-6" />
-
-          {/* Time Slots */}
-          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2.5">
-            {TIME_SLOTS.map((slot) => {
-              const isSelected = selectedTimes.includes(slot.time);
-              return (
-                <button
-                  key={slot.time}
-                  disabled={!slot.available}
-                  onClick={() => toggleTimeSlot(slot.time)}
-                  className={cn(
-                    "py-2.5 rounded-xl text-sm font-bold border transition-all duration-200",
-                    !slot.available 
-                      ? "bg-background/50 border-transparent text-slate-600 cursor-not-allowed opacity-50" 
-                      : isSelected
-                        ? "bg-primary text-white border-primary shadow-md shadow-primary/30"
-                        : "bg-secondary border-border text-slate-300 hover:border-primary/50 hover:bg-slate-800"
-                  )}
-                >
-                  {slot.time}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        )}
       </main>
 
-      {/* Fixed Bottom Booking Bar */}
+      {/* Fixed Bottom Contact Bar */}
       <motion.div 
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
@@ -291,30 +291,173 @@ export default function StudioIdDynamicPage() {
       >
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="flex flex-col">
-            <span className="text-xs font-bold text-slate-400 mb-0.5">총 결제 금액</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-black text-white">{totalPrice.toLocaleString()}</span>
-              <span className="text-sm font-bold text-slate-300">원</span>
-            </div>
-            {selectedTimes.length > 0 && (
-              <span className="text-[10px] sm:text-xs font-bold text-primary mt-0.5">
-                {selectedTimes.length}시간 선택됨 ({selectedTimes[0]} ~ {parseInt(selectedTimes[selectedTimes.length-1])+1}:00)
-              </span>
+            <span className="text-xs font-bold text-slate-400 mb-1">문의 및 예약</span>
+            <span className="text-sm font-bold text-white">이 합주실에 연락해보세요!</span>
+          </div>
+          
+          <div className="flex gap-2">
+            <button 
+              onClick={() => alert("1:1 채팅 기능은 준비 중입니다.")}
+              className="px-5 py-3.5 rounded-xl font-bold text-white text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 border border-slate-600"
+            >
+              <MessageCircle size={18} />
+              1:1 대화하기
+            </button>
+            
+            {studio.bookingUrl ? (
+              <a 
+                href={studio.bookingUrl.startsWith('http') ? studio.bookingUrl : `https://${studio.bookingUrl}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-5 py-3.5 rounded-xl font-black text-white text-sm transition-all duration-300 flex items-center gap-2 bg-gradient-to-r from-[#03C75A] to-[#02b350] hover:scale-105 shadow-[0_0_20px_rgba(3,199,90,0.3)]"
+              >
+                네이버 예약 <ExternalLink size={16} />
+              </a>
+            ) : (
+              <button 
+                onClick={() => alert("등록된 외부 예약 링크가 없습니다. 1:1 대화로 문의해주세요.")}
+                className="px-5 py-3.5 rounded-xl font-bold text-white text-sm transition-all flex items-center gap-2 bg-primary hover:bg-primary/90"
+              >
+                예약 문의하기
+              </button>
             )}
           </div>
-          <button 
-            onClick={handleBooking}
-            className={cn(
-              "px-8 py-4 rounded-xl font-black text-white text-base md:text-lg transition-all duration-300 flex items-center gap-2",
-              selectedTimes.length > 0 
-                ? "bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 shadow-[0_0_20px_rgba(99,102,241,0.4)] hover:scale-105" 
-                : "bg-slate-700 text-slate-400 cursor-not-allowed"
-            )}
-          >
-            예약하기 <ChevronRight size={20} className={cn(selectedTimes.length === 0 && "opacity-50")} />
-          </button>
         </div>
       </motion.div>
+
+      {/* Fullscreen Lightbox Modal */}
+      <AnimatePresence>
+        {isLightboxOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-lg p-4 md:p-8"
+            onClick={() => setIsLightboxOpen(false)}
+          >
+            <button 
+              className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition z-50"
+              onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
+            >
+              <X size={28} />
+            </button>
+            
+            {/* Left Button for Lightbox */}
+            {displayImages.length > 1 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedImage(prev => prev === 0 ? displayImages.length - 1 : prev - 1);
+                }}
+                className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition z-50"
+              >
+                <ChevronLeft size={32} />
+              </button>
+            )}
+
+            {/* Right Button for Lightbox */}
+            {displayImages.length > 1 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedImage(prev => prev === displayImages.length - 1 ? 0 : prev + 1);
+                }}
+                className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition z-50"
+              >
+                <ChevronRight size={32} />
+              </button>
+            )}
+
+            <motion.img 
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              src={displayImages[selectedImage]} 
+              alt="Fullscreen Studio View"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              referrerPolicy="no-referrer"
+              onClick={(e) => e.stopPropagation()} // Prevent clicking image from closing the lightbox
+            />
+            
+            {/* Paginator for Lightbox */}
+            {displayImages.length > 1 && (
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2">
+                {displayImages.map((_, idx) => (
+                  <button 
+                    key={idx}
+                    onClick={(e) => { e.stopPropagation(); setSelectedImage(idx); }}
+                    className={cn("w-2 h-2 rounded-full transition-all duration-300", selectedImage === idx ? "w-6 bg-white" : "bg-white/40 hover:bg-white/60")}
+                  />
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Sticky Bottom Actions */}
+
+      {/* Report Modal */}
+      <AnimatePresence>
+        {isReportModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-secondary w-full max-w-sm rounded-[2rem] border border-border shadow-2xl p-6"
+            >
+              <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
+                <AlertTriangle className="text-rose-500" />
+                합주실 신고하기
+              </h3>
+              <p className="text-xs text-slate-400 mb-4">
+                허위 정보, 부적절한 이미지, 또는 운영되지 않는 합주실인 경우 신고해주세요.
+              </p>
+              <textarea 
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder="신고 사유를 상세히 적어주세요."
+                rows={4}
+                className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-rose-500 transition-all resize-none mb-4"
+              />
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setIsReportModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition"
+                >
+                  취소
+                </button>
+                <button 
+                  onClick={async () => {
+                    if (!reportReason.trim()) return alert('신고 사유를 입력해주세요.');
+                    try {
+                      await reportStudioApi(studio.id, reportReason);
+                      alert('신고가 접수되었습니다.');
+                      setIsReportModalOpen(false);
+                      setReportReason("");
+                    } catch (err) {
+                      alert('신고 접수에 실패했습니다.');
+                    }
+                  }}
+                  className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-500 transition"
+                >
+                  신고 접수
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Studio Modal */}
+      {isEditModalOpen && studio && (
+        <RegisterStudioModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          initialData={studio}
+        />
+      )}
     </div>
   );
 }

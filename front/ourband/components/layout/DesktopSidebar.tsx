@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { usePathname } from "next/navigation";
-import { Home, Search, Music, MapPin, User, MessageCircle, Mic2, HeartHandshake, PenTool, Users, PlaySquare, UserPlus, AudioWaveform, Settings } from "lucide-react";
+import { Home, Search, Music, MapPin, User, MessageCircle, Mic2, HeartHandshake, PenTool, Users, PlaySquare, UserPlus, AudioWaveform, Settings, Bell, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { getUserInfoApi } from "@/api/account/userService";
@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { path: "/jam", label: "오디오잼", icon: Music },
   { path: "/studio", label: "합주실", icon: MapPin },
   { path: "/bands", label: "밴드", icon: Users },
-  { path: "/band", label: "구인/구직", icon: UserPlus },
+  { path: "/band", label: "멤버 찾기", icon: UserPlus },
 ];
 
 const COMMUNITY_ITEMS = [
@@ -150,18 +150,30 @@ export function DesktopSidebar() {
           </Link>
         )}
         {user ? (
-          <Link href="/profile" className="flex items-center gap-3 group">
-            <img 
-              src={user.profilePictureUrl || `https://picsum.photos/seed/user${user.userId || '1'}/100/100`} 
-              alt="My Profile" 
-              className="w-10 h-10 rounded-full border border-border group-hover:border-primary transition-colors object-cover" 
-              referrerPolicy="no-referrer"
-            />
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">{user.nickname}</span>
-              <span className="text-xs text-slate-400">@{user.handle || `user_${user.userId || '1'}`}</span>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 px-1 border-b border-border/50 pb-4">
+              <Link href="/notifications" className="relative flex-1 flex justify-center py-2 rounded-xl bg-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-800 transition-all group">
+                <Bell size={20} className="group-hover:scale-110 transition-transform" />
+                <span className="absolute top-1.5 right-1/4 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-secondary animate-pulse" />
+              </Link>
+              <Link href="/chat" className="relative flex-1 flex justify-center py-2 rounded-xl bg-primary/10 text-primary hover:text-white hover:bg-primary transition-all group">
+                <Send size={20} className="group-hover:scale-110 transition-transform" />
+                <span className="absolute top-1.5 right-1/4 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-secondary animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+              </Link>
             </div>
-          </Link>
+            <Link href="/profile" className="flex items-center gap-3 group">
+              <img 
+                src={user.profilePictureUrl || `https://picsum.photos/seed/user${user.userId || '1'}/100/100`} 
+                alt="My Profile" 
+                className="w-10 h-10 rounded-full border border-border group-hover:border-primary transition-colors object-cover shrink-0" 
+                referrerPolicy="no-referrer"
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">{user.nickname}</span>
+                <span className="text-xs text-slate-400 truncate">@{user.handle || `user_${user.userId || '1'}`}</span>
+              </div>
+            </Link>
+          </div>
         ) : (
           <div className="flex items-center gap-3 animate-pulse">
             <div className="w-10 h-10 rounded-full bg-slate-700" />

@@ -22,11 +22,11 @@ public class CommunityController {
 
     @GetMapping("/posts")
     public ResponseEntity<?> searchPosts(
-            @RequestParam(required = false) String boardType,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String part,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Boolean isPopular,
+            @RequestParam(name = "boardType", required = false) String boardType,
+            @RequestParam(name = "category", required = false) String category,
+            @RequestParam(name = "part", required = false) String part,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "isPopular", required = false) Boolean isPopular,
             @CookieValue(value = "access_token", required = false) String accessToken,
             Pageable pageable) {
         try {

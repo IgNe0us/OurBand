@@ -9,11 +9,12 @@ import { ReportModal } from "@/components/common/ReportModal";
 import { WritePostModal } from "@/components/post/WritePostModal";
 import { LayoutContext } from "@/components/layout/AppLayout";
 import { useRouter, useParams } from 'next/navigation';
-import { MessageSquare, Calendar, Menu, Edit3, Flag, Settings, Play, Heart, Trash2, Users, Loader2, ThumbsUp, BarChart2 } from "lucide-react";
+import { MessageSquare, Calendar, Menu, Edit3, Flag, Settings, Play, Heart, Trash2, Users, Loader2, ThumbsUp, BarChart2, LogOut, User, Music } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
-import { getBandProfileApi, updateBandProfileApi, getBandPostsApi, getBandPostApi, createBandPostApi, updateBandPostApi, deleteBandPostApi, type BandPostData } from "@/api/band/bandService";
+import { getBandProfileApi, updateBandProfileApi, getBandPostsApi, getBandPostApi, createBandPostApi, updateBandPostApi, deleteBandPostApi, type BandPostData, getBandApplicationsApi, acceptApplicationApi, rejectApplicationApi, type BandApplicationData, leaveBandApi } from "@/api/band/bandService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
+import { Clock, CheckCircle2, XCircle, X } from "lucide-react";
 
 const getFirstImageFromHtml = (htmlString: string) => {
   const match = htmlString.match(/<img[^>]+src="([^">]+)"/);
@@ -35,7 +36,7 @@ const getRelativeTime = (dateString?: string) => {
   return date.toLocaleDateString();
 };
 
-const TABS = ["전체", "공지사항", "자유게시판", "합주 일정", "합주", "멤버"];
+const BASE_TABS = ["전체", "공지사항", "자유게시판", "합주 일정", "합주", "멤버"];
 
 export default function BandIdDynamicBoardPage() {
   const { id } = useParams() as { id: string };
@@ -48,6 +49,8 @@ export default function BandIdDynamicBoardPage() {
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [selectedVideoPostId, setSelectedVideoPostId] = useState<string | number | null>(null);
+  const [rejectModalTarget, setRejectModalTarget] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   // 실시간 데이터 States
   const [bandProfile, setBandProfile] = useState<BandProfileData | null>(null);
@@ -55,6 +58,10 @@ export default function BandIdDynamicBoardPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [loadingPosts, setLoadingPosts] = useState(true);
+  
+  // 가입 신청 관리 State
+  const [bandApplications, setBandApplications] = useState<BandApplicationData[]>([]);
+  const [loadingApps, setLoadingApps] = useState(false);
 
   // 1. 유저 정보 로드 (삭제 권한용)
   useEffect(() => {
@@ -64,7 +71,7 @@ export default function BandIdDynamicBoardPage() {
   }, []);
 
   // 2. 밴드 상세 데이터 로드
-  const fetchBandData = async () => {
+  const fetchBandData = async (userId: number | null) => {
     try {
       setLoadingProfile(true);
       const profile = await getBandProfileApi(id);
@@ -84,6 +91,16 @@ export default function BandIdDynamicBoardPage() {
         positions: profile.positions || [],
         history: historyList
       });
+
+      // 게시판 접근 권한 체크 (멤버만 허용)
+      if (userId !== null && !profile.isLeader) {
+        const isMember = profile.positions?.some((p: any) => p.userId === userId);
+        if (!isMember) {
+          alert("해당 밴드의 멤버만 게시판에 접근할 수 있습니다.");
+          router.push('/bands');
+          return;
+        }
+      }
     } catch (error) {
       console.error("Failed to fetch band details:", error);
     } finally {
@@ -111,15 +128,81 @@ export default function BandIdDynamicBoardPage() {
   };
 
   useEffect(() => {
-    fetchBandData();
-  }, [id]);
+    if (currentUserId !== null) {
+      fetchBandData(currentUserId);
+    }
+  }, [id, currentUserId]);
 
   useEffect(() => {
     fetchPostsData();
   }, [id, activeTab]);
 
+  // 방장일 경우 가입 신청 탭 진입 시 데이터 로드
+  useEffect(() => {
+    if (activeTab === "가입 신청" && bandProfile?.isLeader) {
+      loadBandApplications();
+    }
+  }, [activeTab, bandProfile?.isLeader]);
+
+  const loadBandApplications = async () => {
+    try {
+      setLoadingApps(true);
+      const apps = await getBandApplicationsApi(id);
+      setBandApplications(apps);
+    } catch (err) {
+      console.error("Failed to load applications:", err);
+    } finally {
+      setLoadingApps(false);
+    }
+  };
+
+  const handleAcceptApp = async (appId: number) => {
+    try {
+      await acceptApplicationApi(appId);
+      alert("수락 완료");
+      loadBandApplications();
+      fetchBandData(currentUserId);
+    } catch (err: any) {
+      alert(err.response?.data?.message || "오류가 발생했습니다.");
+    }
+  };
+
+  const handleRejectApp = (id: number) => {
+    setRejectModalTarget(id);
+    setRejectReason("");
+  };
+
+  const submitRejectApp = async () => {
+    if (rejectModalTarget !== null) {
+      try {
+        await rejectApplicationApi(rejectModalTarget, rejectReason);
+        setBandApplications(prev => prev.map(app => 
+          app.id === rejectModalTarget ? { ...app, status: "REJECTED", rejectReason: rejectReason } : app
+        ));
+        setRejectModalTarget(null);
+        setRejectReason("");
+      } catch (err: any) {
+        alert(err.response?.data?.message || "거절 처리 실패");
+      }
+    }
+  };
+
+  const handleLeaveBand = async () => {
+    if (confirm("정말 밴드에서 탈퇴하시겠습니까? 탈퇴 후에는 게시판을 볼 수 없습니다.")) {
+      try {
+        await leaveBandApi(id);
+        alert("성공적으로 탈퇴되었습니다.");
+        navigate('/bands');
+      } catch (err: any) {
+        alert(err.response?.data?.message || "탈퇴에 실패했습니다.");
+      }
+    }
+  };
+
   // 방장 여부 체크
   const isLeader = bandProfile?.isLeader || false;
+  
+  const displayTabs = isLeader ? [...BASE_TABS, "가입 신청"] : BASE_TABS;
 
   // 4. 프로필 관리 저장 핸들러
   const handleSaveProfile = async (updatedData: BandProfileData) => {
@@ -134,7 +217,7 @@ export default function BandIdDynamicBoardPage() {
       };
       await updateBandProfileApi(id, payload);
       alert("밴드 프로필이 변경되었습니다! 🎸");
-      fetchBandData();
+      fetchBandData(currentUserId);
     } catch (error) {
       console.error("Failed to update profile:", error);
       alert("프로필 수정 권한이 없거나 저장에 실패했습니다.");
@@ -147,7 +230,6 @@ export default function BandIdDynamicBoardPage() {
       let mediaUrl = "";
       let mediaType = "";
       
-      // 파일 첨부 시 Cloudflare R2에 업로드
       if (postData.files && postData.files.length > 0) {
         const file = postData.files[0];
         mediaUrl = await uploadToCloudflare(file);
@@ -159,27 +241,24 @@ export default function BandIdDynamicBoardPage() {
       else if (postData.boardType === "합주 일정") boardType = "SCHEDULE";
       else if (postData.boardType === "합주") boardType = "REHEARSAL";
 
-      // 합주 일정일 경우 오늘 혹은 임의 날짜 세팅
       let scheduleDate = "";
       if (boardType === "SCHEDULE") {
-        scheduleDate = new Date(Date.now() + 86400000 * 3).toLocaleDateString('ko-KR'); // 3일 후 자동매핑 예시
+        scheduleDate = new Date(Date.now() + 86400000 * 3).toLocaleDateString('ko-KR');
       }
 
       if (postData.id) {
-        // 게시글 수정
         await updateBandPostApi(id, postData.id, {
           boardType,
           category: postData.category,
           title: postData.title,
           content: postData.content,
-          mediaUrl: mediaUrl || undefined, // 새 파일이 없으면 덮어쓰지 않게 처리가 필요하나, 임시로 이렇게 둠
+          mediaUrl: mediaUrl || undefined,
           mediaType: mediaType || undefined,
           scheduleDate,
           poll: postData.poll
         });
         alert("게시글이 성공적으로 수정되었습니다! 📝");
       } else {
-        // 게시글 생성
         const newPost = await createBandPostApi(id, {
           boardType,
           category: postData.category,
@@ -239,32 +318,45 @@ export default function BandIdDynamicBoardPage() {
 
   return (
     <div className="flex flex-col bg-background pb-20 overflow-x-hidden">
-      {/* Cover Banner Header */}
       <div className="relative h-56 md:h-72 w-full bg-slate-900 shrink-0">
-        <img src={bandProfile.coverImage || "https://picsum.photos/seed/band1/800/400"} className="w-full h-full object-cover opacity-60" alt="Cover" />
+        {bandProfile.coverImage ? (
+          <img src={bandProfile.coverImage} className="w-full h-full object-cover opacity-60" alt="Cover" />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 opacity-60" />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
         
-        {/* Top Actions */}
         <div className="absolute top-0 left-0 w-full p-6 pt-12 md:pt-8 flex justify-between items-start z-10">
           <button onClick={openMenu} className="md:hidden text-white drop-shadow-md">
             <Menu size={28} />
           </button>
           
-          {isLeader && (
+          {isLeader ? (
             <button 
               onClick={() => setIsEditProfileOpen(true)}
               className="ml-auto bg-black/50 hover:bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl text-sm font-bold text-white border border-white/10 transition-colors flex items-center gap-2"
             >
               <Settings size={16} />
-              프로필 관리
+              밴드 관리
+            </button>
+          ) : (
+            <button 
+              onClick={handleLeaveBand}
+              className="ml-auto bg-black/30 hover:bg-rose-500/20 backdrop-blur-md px-4 py-2 rounded-xl text-sm font-bold text-slate-300 hover:text-rose-500 border border-white/5 hover:border-rose-500/30 transition-colors flex items-center gap-2"
+            >
+              <LogOut size={16} />
+              밴드 탈퇴
             </button>
           )}
         </div>
 
-        {/* Profile Info in Cover */}
         <div className="absolute bottom-6 left-6 md:left-8 flex items-end gap-5 w-[calc(100%-3rem)] pr-6">
-          <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-4 border-background shadow-2xl overflow-hidden bg-slate-800 shrink-0">
-            <img src={bandProfile.logoImage || "https://picsum.photos/seed/logo1/150/150"} className="w-full h-full object-cover" alt="Logo" referrerPolicy="no-referrer" />
+          <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-4 border-background shadow-2xl overflow-hidden bg-slate-800 shrink-0 flex items-center justify-center">
+            {bandProfile.logoImage ? (
+              <img src={bandProfile.logoImage} className="w-full h-full object-cover" alt="Logo" referrerPolicy="no-referrer" />
+            ) : (
+              <Users size={32} className="text-slate-400" />
+            )}
           </div>
           <div className="mb-1 text-left">
             <h1 className="text-3xl md:text-4xl font-black text-white leading-tight drop-shadow-md">{bandProfile.name}</h1>
@@ -273,10 +365,9 @@ export default function BandIdDynamicBoardPage() {
         </div>
       </div>
 
-      {/* Sticky Tabs */}
       <div className="bg-background/80 backdrop-blur-xl z-20 sticky top-0 border-b border-border pt-4 px-6 md:px-8">
         <div className="flex gap-6 relative overflow-x-auto hide-scrollbar whitespace-nowrap pb-3">
-          {TABS.map((tab) => (
+          {displayTabs.map((tab) => (
             <button 
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -295,7 +386,6 @@ export default function BandIdDynamicBoardPage() {
       </div>
 
       <main className="p-6 md:p-8 max-w-[1600px] mx-auto w-full">
-        {/* Members Section */}
         {activeTab === "멤버" && (
           <div className="space-y-8 w-full">
             <div>
@@ -305,7 +395,13 @@ export default function BandIdDynamicBoardPage() {
                   bandProfile.positions.filter(p => !p.isRecruiting).map((member, index) => (
                     <div key={member.id} className="bg-secondary/40 border border-border rounded-2xl p-5 flex items-center gap-4 hover:border-primary/30 transition-colors">
                       <div className="relative shrink-0">
-                        <img src={member.profileImageUrl || `https://picsum.photos/seed/user${member.userId || member.id}/100/100`} alt={member.memberName} className="w-14 h-14 rounded-full object-cover border-2 border-border" />
+                        {member.profileImageUrl ? (
+                          <img src={member.profileImageUrl} alt={member.memberName} className="w-14 h-14 rounded-full object-cover border-2 border-border" />
+                        ) : (
+                          <div className="w-14 h-14 rounded-full border-2 border-border bg-slate-800 flex items-center justify-center">
+                            <User size={20} className="text-slate-500" />
+                          </div>
+                        )}
                         {index === 0 && (
                           <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-yellow-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-secondary shadow-sm">
                             방장
@@ -349,7 +445,6 @@ export default function BandIdDynamicBoardPage() {
               </div>
             </div>
             
-            {/* History Section (멤버 탭 하단 연혁 렌더링) */}
             {bandProfile.history && bandProfile.history.length > 0 && (
               <div className="pt-4 text-left">
                 <h2 className="text-xl font-black text-white mb-4">밴드 연혁</h2>
@@ -367,7 +462,6 @@ export default function BandIdDynamicBoardPage() {
           </div>
         )}
 
-        {/* Video Posts Section ("합주" 탭) */}
         {activeTab === "합주" && (
           <div className="col-span-full w-full">
             <h2 className="text-xl font-black text-white mb-4 text-left">합주 영상 및 기록</h2>
@@ -393,7 +487,9 @@ export default function BandIdDynamicBoardPage() {
                           <img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80" />
                         )
                       ) : (
-                        <img src="https://picsum.photos/seed/oasis1/800/450" className="w-full h-full object-cover opacity-80" alt="Placeholder" />
+                        <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
+                          <Music size={32} className="text-slate-600" />
+                        </div>
                       )}
                       <div className="absolute inset-0 flex items-center justify-center p-4">
                         <div className="w-12 h-12 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 group-hover:bg-primary group-hover:border-primary transition-colors">
@@ -425,8 +521,60 @@ export default function BandIdDynamicBoardPage() {
           </div>
         )}
 
-        {/* Regular Posts (Notice, Free, Schedule) */}
-        {activeTab !== "멤버" && activeTab !== "합주" && (
+        {activeTab === "가입 신청" && (
+          <div className="w-full space-y-4">
+            <h2 className="text-xl font-black text-white mb-4 text-left">가입 신청 관리</h2>
+            {loadingApps ? (
+              <div className="py-12 text-slate-500 text-center font-bold">로딩 중...</div>
+            ) : bandApplications.length === 0 ? (
+              <div className="text-center py-16 text-sm font-bold text-slate-500 bg-secondary/10 rounded-2xl border border-dashed border-border">
+                들어온 가입 신청이 없습니다.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {bandApplications.map(app => (
+                  <div key={app.id} className="bg-secondary/40 border border-border rounded-2xl p-5 text-left flex flex-col">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-12 h-12 bg-slate-800 rounded-full overflow-hidden shrink-0">
+                        {app.applicantProfileImageUrl ? (
+                          <img src={app.applicantProfileImageUrl} className="w-full h-full object-cover" />
+                        ) : (
+                          <Users size={24} className="m-3 text-slate-500" />
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-white font-bold">{app.applicantName}</h4>
+                        <p className="text-xs text-slate-400 mt-0.5">{app.position} 지원 • {new Date(app.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      
+                      <div className="ml-auto">
+                        {app.status === "PENDING" && <span className="flex items-center gap-1 text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20"><Clock size={12} /> 심사중</span>}
+                        {app.status === "ACCEPTED" && <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20"><CheckCircle2 size={12} /> 수락완료</span>}
+                        {app.status === "REJECTED" && <span className="flex items-center gap-1 text-[10px] font-bold text-rose-500 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20"><XCircle size={12} /> 거절됨</span>}
+                      </div>
+                    </div>
+                    
+                    <div className="bg-background/50 p-3 rounded-xl border border-border/50 text-sm text-slate-300 mb-4 whitespace-pre-wrap">
+                      {app.message || "메시지가 없습니다."}
+                    </div>
+
+                    {app.status === "PENDING" && (
+                      <div className="flex gap-2 mt-auto">
+                        <button onClick={() => handleAcceptApp(app.id)} className="flex-1 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-bold py-2.5 rounded-lg transition-colors">수락하기</button>
+                        <button onClick={() => handleRejectApp(app.id)} className="flex-1 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/30 text-xs font-bold py-2.5 rounded-lg transition-colors">거절하기</button>
+                      </div>
+                    )}
+                    {app.rejectReason && app.status === "REJECTED" && (
+                      <p className="text-xs text-slate-400 mt-2">사유: {app.rejectReason}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab !== "멤버" && activeTab !== "합주" && activeTab !== "가입 신청" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
             {loadingPosts ? (
               <div className="col-span-full py-12 text-slate-500 text-center font-bold">로딩 중...</div>
@@ -732,7 +880,6 @@ export default function BandIdDynamicBoardPage() {
         )}
       </main>
 
-      {/* Write Post FAB */}
       <button 
         onClick={() => setIsWriteModalOpen(true)}
         className="fixed bottom-24 md:bottom-12 right-6 w-14 h-14 bg-primary hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all z-30 hover:scale-105"
@@ -740,7 +887,6 @@ export default function BandIdDynamicBoardPage() {
         <Edit3 size={24} />
       </button>
 
-      {/* Write Post Modal Instance */}
       <WritePostModal 
         isOpen={isWriteModalOpen} 
         onClose={() => { setIsWriteModalOpen(false); setPostToEdit(null); }} 
@@ -750,14 +896,12 @@ export default function BandIdDynamicBoardPage() {
         onSubmit={handleCreatePost}
       />
 
-      {/* Report Modal */}
       <ReportModal 
         isOpen={reportModalOpen} 
         onClose={() => setReportModalOpen(false)} 
         targetName="게시글"
       />
 
-      {/* Video Post Modal */}
       <VideoPostModal
         isOpen={!!selectedVideoPostId}
         onClose={() => setSelectedVideoPostId(null)}
@@ -765,13 +909,50 @@ export default function BandIdDynamicBoardPage() {
         bandId={id}
       />
 
-      {/* Edit Profile Modal */}
       <EditBandProfileModal 
         isOpen={isEditProfileOpen}
         onClose={() => setIsEditProfileOpen(false)}
         initialData={bandProfile}
         onSave={handleSaveProfile}
       />
+
+      {rejectModalTarget !== null && (
+        <motion.div 
+          key="reject-app-modal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center bg-black/80 backdrop-blur-sm p-4"
+        >
+          <motion.div 
+            initial={{ y: "100%", opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "100%", opacity: 0 }}
+            className="bg-secondary w-full max-w-sm rounded-[2rem] p-6 border border-border shadow-2xl relative"
+          >
+            <button onClick={() => setRejectModalTarget(null)} className="absolute top-6 right-6 text-slate-400 hover:text-white"><X size={24} /></button>
+            <h2 className="text-xl font-black text-white mb-2">가입 신청 거절</h2>
+            <p className="text-sm text-slate-400 mb-6">거절 사유를 작성해 주세요. (선택사항)</p>
+            
+            <div className="space-y-4">
+              <textarea 
+                rows={4}
+                placeholder="예: 현재 모집 포지션과 맞지 않아 거절합니다."
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none"
+              />
+              
+              <button 
+                onClick={submitRejectApp}
+                className="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl py-4 mt-2 transition-all shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+              >
+                거절하기
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 }

@@ -122,7 +122,7 @@ export default function RegisterPage() {
         </div>
 
         {/* Account Type Toggle */}
-        <div className="flex p-1 bg-secondary border border-border rounded-xl mb-8 relative">
+        {/* <div className="flex p-1 bg-secondary border border-border rounded-xl mb-8 relative">
           <div 
             className={cn(
               "absolute top-1 bottom-1 w-[calc(50%-4px)] bg-slate-800 rounded-lg shadow-sm transition-all duration-300", 
@@ -143,7 +143,7 @@ export default function RegisterPage() {
           >
             사업자 회원
           </button>
-        </div>
+        </div> */}
 
         <form onSubmit={handleSignUp} className="space-y-4">
           <div className="space-y-1.5">

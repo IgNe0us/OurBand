@@ -178,8 +178,8 @@ export default function CommunityPostDetailPage() {
         mediaUrl = await uploadToCloudflare(data.files[0]);
         mediaType = data.files[0].type.startsWith("video/") ? "VIDEO" : "IMAGE";
       } else if (data.removeMedia) {
-        mediaUrl = null;
-        mediaType = null;
+        mediaUrl = undefined;
+        mediaType = undefined;
       }
 
       await updateCommunityPostApi(id, {

@@ -3,7 +3,7 @@ import { AudioJamModal } from "@/components/jam/AudioJamModal";
 // @ts-nocheck
 
 import React, { useState } from "react";
-import { Share, Music2, MapPin, Zap, AtSign, ArrowLeft, X } from "lucide-react";
+import { Share, Music2, MapPin, Zap, AtSign, ArrowLeft, X, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -14,7 +14,7 @@ export default function ProfileIdDynamicPage() {
   const { userId } = useParams();
   const router = useRouter();
   const navigate = (path: string) => router.push(path);;
-  const [activeTab, setActiveTab] = useState<"Favorite Music" | "History" | "Gear">("Favorite Music");
+  const [activeTab, setActiveTab] = useState<"좋아하는 곡" | "히스토리" | "내 장비">("좋아하는 곡");
 
   // Read-only mocked data for other user's profile
   const favoriteMusic = [
@@ -68,7 +68,7 @@ export default function ProfileIdDynamicPage() {
 
       {/* Cover Profile */}
       <div className="relative h-48 md:h-64 bg-secondary border-b border-border">
-        <img src={`https://picsum.photos/seed/usercover${userId}/800/400`} className="w-full h-full object-cover opacity-50" alt="Cover" referrerPolicy="no-referrer" />
+        <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 opacity-50" />
         
         {/* Sleek soft gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-black/40 to-transparent" />
@@ -77,7 +77,9 @@ export default function ProfileIdDynamicPage() {
       <div className="px-6 md:px-10 lg:px-16 -mt-16 relative z-10 max-w-6xl mx-auto w-full">
         <div className="flex justify-between items-end mb-4">
           <div className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-background bg-slate-800 overflow-hidden shadow-2xl relative">
-            <img src={`https://picsum.photos/seed/userprofile${userId}/200/200`} className="w-full h-full object-cover" alt="Profile" referrerPolicy="no-referrer" />
+            <div className="w-full h-full flex items-center justify-center bg-slate-800">
+              <User size={48} className="text-slate-500" />
+            </div>
           </div>
           <button 
             onClick={() => setIsFollowing(!isFollowing)}
@@ -134,7 +136,7 @@ export default function ProfileIdDynamicPage() {
           <div className="lg:col-span-2">
             {/* Sleek Tab Navigation */}
             <div className="flex border-b border-border mb-6">
-              {["Favorite Music", "History", "Gear"].map((tab) => (
+              {["좋아하는 곡", "히스토리", "내 장비"].map((tab) => (
                 <button 
                   key={tab}
                   onClick={() => setActiveTab(tab as any)}
@@ -152,7 +154,7 @@ export default function ProfileIdDynamicPage() {
             </div>
 
             {/* Tab Content */}
-            {activeTab === "Favorite Music" && (
+            {activeTab === "좋아하는 곡" && (
               <div className="bg-secondary border border-border rounded-2xl p-2 shadow-xl">
                 {favoriteMusic.map((song, idx) => (
                   <div key={`fav-${idx}`} className="flex items-center justify-between p-4 border-b border-border last:border-0 rounded-xl hover:bg-white/5 transition-colors">
@@ -165,13 +167,15 @@ export default function ProfileIdDynamicPage() {
               </div>
             )}
             
-            {activeTab === "History" && (
+            {activeTab === "히스토리" && (
               <div className="space-y-4">
                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                    {historyList.map((history, idx) => (
                       <div key={`history-${history.id}-${idx}`} className="bg-secondary/40 border border-border rounded-2xl overflow-hidden hover:border-primary/50 transition-colors cursor-pointer group flex flex-col relative" onClick={() => setSelectedHistory(history)}>
                          <div className="relative overflow-hidden bg-slate-800 shrink-0 aspect-[3/4]">
-                            <img src={`https://picsum.photos/seed/history${history.id}/600/800`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-70 group-hover:opacity-100" alt="history" referrerPolicy="no-referrer" />
+                            <div className="w-full h-full flex items-center justify-center bg-slate-800 opacity-70 group-hover:opacity-100 transition-opacity">
+                              <Music2 size={32} className="text-slate-500" />
+                            </div>
                          </div>
                          <div className="p-4 md:p-5 text-left flex flex-col flex-1 bg-secondary/20">
                             <h4 className="text-sm md:text-base font-bold text-white mb-2 line-clamp-2 group-hover:text-primary transition-colors leading-snug">{history.title}</h4>
@@ -183,7 +187,7 @@ export default function ProfileIdDynamicPage() {
               </div>
             )}
 
-            {activeTab === "Gear" && (
+            {activeTab === "내 장비" && (
               <div className="bg-secondary border border-border rounded-2xl p-2 shadow-xl">
                  {gearList.length === 0 ? (
                    <div className="text-center py-12 text-slate-500">
@@ -258,7 +262,9 @@ export default function ProfileIdDynamicPage() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-full bg-slate-800 border border-border overflow-hidden">
-                        <img src={`https://picsum.photos/seed/${user.imageSeed}/100/100`} alt={user.name} />
+                        <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                          <User size={20} className="text-slate-500" />
+                        </div>
                       </div>
                       <div className="text-left">
                         <h4 className="font-bold text-white text-sm group-hover:text-primary transition-colors">{user.name}</h4>

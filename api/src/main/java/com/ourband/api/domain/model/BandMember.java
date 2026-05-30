@@ -36,4 +36,9 @@ public class BandMember {
     @CreationTimestamp
     @Column(name = "joined_at", updatable = false)
     private LocalDateTime joinedAt; // 가입일 (또는 포지션 생성일)
+
+    public void leave() {
+        this.userId = null;
+        this.status = "NONE";
+    }
 }

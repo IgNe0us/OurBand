@@ -48,7 +48,7 @@ public class UserController {
             String accessToken = jwtUtil.generateToken(user.getUserId(), user.getEmail(), user.getType());
             
             ResponseCookie cookie = ResponseCookie.from("access_token", accessToken)
-                .httpOnly(true)
+                .httpOnly(false)
                 .secure(false) // 개발환경 false
                 .path("/")
                 .maxAge(60 * 60 * 24)
@@ -78,7 +78,7 @@ public class UserController {
         public ResponseEntity<?> logout() {
 
             ResponseCookie deleteCookie = ResponseCookie.from("access_token", "")
-                    .httpOnly(true)
+                    .httpOnly(false)
                     .secure(false)
                     .path("/")
                     .maxAge(0)
@@ -194,7 +194,7 @@ public class UserController {
     @DeleteMapping("/favorite-music/{musicId}")
     public ResponseEntity<Void> deleteFavoriteMusic(
             @CookieValue("access_token") String token,
-            @PathVariable Long musicId) {
+            @PathVariable("musicId") Long musicId) {
         Long userId = jwtUtil.getUserId(token);
         userService.deleteFavoriteMusic(userId, musicId);
         return ResponseEntity.noContent().build();
@@ -214,7 +214,7 @@ public class UserController {
     @DeleteMapping("/gear/{gearId}")
     public ResponseEntity<Void> deleteGear(
             @CookieValue("access_token") String token,
-            @PathVariable Long gearId) {
+            @PathVariable("gearId") Long gearId) {
         Long userId = jwtUtil.getUserId(token);
         userService.deleteGear(userId, gearId);
         return ResponseEntity.noContent().build();
@@ -237,7 +237,7 @@ public class UserController {
     @DeleteMapping("/history/{historyId}")
     public ResponseEntity<Void> deleteHistory(
             @CookieValue("access_token") String token,
-            @PathVariable Long historyId) {
+            @PathVariable("historyId") Long historyId) {
             
         Long userId = jwtUtil.getUserId(token);
         userService.deleteHistory(userId, historyId);
@@ -248,7 +248,7 @@ public class UserController {
     // 좋아요 토글 API
     @PostMapping("/history/{historyId}/like")
     public ResponseEntity<Integer> toggleLike(
-            @PathVariable Long historyId,
+            @PathVariable("historyId") Long historyId,
             @CookieValue("access_token") String token) {
         Long userId = jwtUtil.getUserId(token);
         int updatedLikeCount = userService.toggleLike(userId, historyId);
@@ -257,7 +257,7 @@ public class UserController {
 
     // 댓글 조회 API
     @GetMapping("/history/{historyId}/comments")
-    public ResponseEntity<List<HistoryCommentResponse>> getComments(@PathVariable Long historyId) {
+    public ResponseEntity<List<HistoryCommentResponse>> getComments(@PathVariable("historyId") Long historyId) {
         List<HistoryCommentResponse> comments = userService.getComments(historyId);
         return ResponseEntity.ok(comments);
     }
@@ -265,7 +265,7 @@ public class UserController {
     // 댓글 작성 API
     @PostMapping("/history/{historyId}/comments")
     public ResponseEntity<HistoryCommentResponse> addComment(
-            @PathVariable Long historyId,
+            @PathVariable("historyId") Long historyId,
             @RequestBody Map<String, String> body,
             @CookieValue("access_token") String token) {
         Long userId = jwtUtil.getUserId(token);
@@ -275,7 +275,7 @@ public class UserController {
 
     //게시글 공유 카운트 상승
     @PostMapping("/history/{historyId}/share")
-    public ResponseEntity<Void> increaseShare(@PathVariable Long historyId) {
+    public ResponseEntity<Void> increaseShare(@PathVariable("historyId") Long historyId) {
         userService.increaseShareCount(historyId);
         return ResponseEntity.ok().build();
     }
@@ -325,12 +325,44 @@ public class UserController {
     }
 
     /**
+     * 내 밴드 목록 조회 API
+     */
+    @GetMapping("/bands")
+    public ResponseEntity<?> getMyBands(
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        if (accessToken == null || accessToken.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "로그인이 필요합니다."));
+        }
+        try {
+            Long currentUserId = jwtUtil.getUserId(accessToken);
+            List<com.ourband.api.domain.dto.user.BandSimpleDTO> bands = userService.getMyBands(currentUserId);
+            
+            // Map BandSimpleDTO to frontend MyBandData format
+            List<Map<String, Object>> responseList = bands.stream().map(b -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", b.getBandId());
+                map.put("name", b.getBandName());
+                map.put("logoImageUrl", b.getLogoImageUrl());
+                map.put("role", b.getRole());
+                map.put("isLeader", "Leader".equalsIgnoreCase(b.getRole()) || "리더".equals(b.getRole())); // Or true if they created it, but let's just default to role logic for now.
+                return map;
+            }).toList();
+            
+            return ResponseEntity.ok(responseList);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "유효하지 않은 토큰입니다."));
+        }
+    }
+
+    /**
      * 팔로우 / 언팔로우 토글 API
      */
     @PostMapping("/follow/{targetUserId}")
     public ResponseEntity<?> toggleFollow(
             @CookieValue(value = "access_token") String accessToken,
-            @PathVariable Long targetUserId) {
+            @PathVariable("targetUserId") Long targetUserId) {
         try {
             Long currentUserId = jwtUtil.getUserId(accessToken);
             boolean isNowFollowing = userService.toggleFollow(currentUserId, targetUserId);

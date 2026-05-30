@@ -35,11 +35,6 @@ export function StudioMapView({ center, studios, onExternalClick }: StudioMapVie
   const rawKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY as string || "";
   const sanitizedKey = rawKey.replace("NEXT_PUBLIC_KAKAO_MAP_APP_KEY=", "").trim();
 
-  const [loading, error] = useKakaoLoader({
-    appkey: sanitizedKey || "dummy", 
-    libraries: ["services"]
-  });
-
   // 앱 키가 없는 경우 에러 방지용 Fallback UI
   if (!sanitizedKey) {
     return (
@@ -55,21 +50,9 @@ export function StudioMapView({ center, studios, onExternalClick }: StudioMapVie
     );
   }
 
-  if (loading) {
-    return (
-      <div className="w-full h-[400px] md:h-[500px] rounded-2xl overflow-hidden shadow-xl border border-border bg-slate-800 flex flex-col items-center justify-center p-6 text-center text-slate-400">
-        지도 로딩 중...
-      </div>
-    );
-  }
+  // 상위 컴포넌트에서 로딩 상태를 관리하므로 여기서는 체크 생략
 
-  if (error) {
-    return (
-      <div className="w-full h-[400px] md:h-[500px] rounded-2xl overflow-hidden shadow-xl border border-border bg-slate-800 flex flex-col items-center justify-center p-6 text-center text-red-400">
-        지도 로드 실패. API 키 설정 및 네트워크를 확인해주세요.
-      </div>
-    );
-  }
+  // 에러 체크도 상위 컴포넌트에서 처리
 
   return (
     <div className="w-full h-[400px] md:h-[500px] rounded-2xl overflow-hidden shadow-xl border border-border relative z-0">
@@ -81,7 +64,7 @@ export function StudioMapView({ center, studios, onExternalClick }: StudioMapVie
       >
         <Circle
           center={{ lat: defaultLat, lng: defaultLng }}
-          radius={2000}
+          radius={10000}
           strokeWeight={1}
           strokeColor={"#6366f1"}
           strokeOpacity={0.5}

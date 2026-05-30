@@ -281,7 +281,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
               <span className="text-white text-xs font-semibold drop-shadow-md">{displayLikes}</span>
             </button>
 
-            <button onClick={() => setActiveCommentId(post.id)} className="flex flex-col items-center gap-1.5 group">
+            <button onClick={() => setActiveCommentId(String(post.id))} className="flex flex-col items-center gap-1.5 group">
               <div className="w-12 h-12 bg-background/20 backdrop-blur-md rounded-full flex items-center justify-center border border-border group-hover:bg-white/10 transition-colors">
                 <MessageCircle size={24} className="text-white" />
               </div>
@@ -289,7 +289,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
               <span className="text-white text-xs font-semibold drop-shadow-md">{comments.length + (post.commentsCount ?? 0)}</span>
             </button>
 
-            <button onClick={() => setActiveShareId(post.id)} className="flex flex-col items-center gap-1.5 group">
+            <button onClick={() => setActiveShareId(String(post.id))} className="flex flex-col items-center gap-1.5 group">
               <div className="w-12 h-12 bg-background/20 backdrop-blur-md rounded-full flex items-center justify-center border border-border group-hover:bg-white/10 transition-colors">
                 <Share2 size={24} className="text-white" />
               </div>

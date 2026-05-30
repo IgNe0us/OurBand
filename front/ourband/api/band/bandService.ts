@@ -159,3 +159,119 @@ export const createCommentApi = async (postId: string | number, content: string)
   const response = await apiClient.post(`/bands/posts/${postId}/comments`, { content });
   return response.data;
 };
+// ========================================
+// 💡 밴드 가입 신청 API
+// ========================================
+
+export type BandApplicationData = {
+  id: number;
+  bandId: number;
+  bandName: string;
+  bandLogoUrl: string | null;
+  bandMemberId: number;
+  position: string;
+  applicantUserId: number;
+  applicantName: string;
+  applicantProfileImageUrl: string | null;
+  message: string;
+  status: string; // PENDING, ACCEPTED, REJECTED
+  rejectReason: string | null;
+  createdAt: string;
+};
+
+export type BandApplicationRequestData = {
+  bandMemberId: number;
+  message: string;
+};
+
+// 1. 가입 신청하기
+export const createApplicationApi = async (bandId: number | string, data: BandApplicationRequestData): Promise<BandApplicationData> => {
+  const response = await apiClient.post(`/bands/${bandId}/applications`, data);
+  return response.data;
+};
+
+// 2. 내 가입 신청 목록 조회
+export const getMyApplicationsApi = async (): Promise<BandApplicationData[]> => {
+  const response = await apiClient.get('/bands/applications/my');
+  return response.data;
+};
+
+// 3. 밴드에 들어온 가입 신청 목록 조회 (방장용)
+export const getBandApplicationsApi = async (bandId: number | string): Promise<BandApplicationData[]> => {
+  const response = await apiClient.get(`/bands/${bandId}/applications`);
+  return response.data;
+};
+
+// 4. 가입 신청 수락
+export const acceptApplicationApi = async (id: number | string): Promise<{ message: string }> => {
+  const response = await apiClient.patch(`/bands/applications/${id}/accept`);
+  return response.data;
+};
+
+// 5. 가입 신청 거절
+export const rejectApplicationApi = async (id: number | string, reason?: string): Promise<{ message: string }> => {
+  const url = reason ? `/bands/applications/${id}/reject?reason=${encodeURIComponent(reason)}` : `/bands/applications/${id}/reject`;
+  const response = await apiClient.patch(url);
+  return response.data;
+};
+
+// ========================================
+// 💡 내 밴드 조회 API
+// ========================================
+
+export type MyBandData = {
+  id: number;
+  name: string;
+  logoImageUrl: string | null;
+  role: string;
+  isLeader: boolean;
+};
+
+export const getMyBandsApi = async (): Promise<MyBandData[]> => {
+  const response = await apiClient.get('/users/bands');
+  return response.data;
+};
+
+// === 밴드 목록 검색 ===
+export type BandListData = {
+  id: number;
+  name: string;
+  genre: string;
+  location: string;
+  description: string;
+  logoImageUrl: string | null;
+  coverImageUrl: string | null;
+  meetingSchedule: string;
+  memberCount: number;
+  recruitingPositions: { id: number; role: string }[];
+  recruiting: boolean;
+  followed: boolean;
+  followerCount: number;
+  createdAt: string;
+};
+
+// 9. 밴드 탈퇴 (일반 멤버용)
+export const leaveBandApi = async (bandId: string | number): Promise<{ message: string }> => {
+  const response = await apiClient.delete(`/bands/${bandId}/leave`);
+  return response.data;
+};
+
+// 10. 밴드 해체 (방장용)
+export const deleteBandApi = async (bandId: string | number): Promise<{ message: string }> => {
+  const response = await apiClient.delete(`/bands/${bandId}`);
+  return response.data;
+};
+
+export const getAllBandsApi = async (params: {
+  genre?: string; location?: string; keyword?: string;
+  recruitingOnly?: boolean; followedOnly?: boolean;
+  page?: number; size?: number;
+}): Promise<{ content: BandListData[]; last: boolean; totalElements: number }> => {
+  const response = await apiClient.get('/bands', { params });
+  return response.data;
+};
+
+export const toggleBandFollowApi = async (bandId: number): Promise<{ isFollowed: boolean }> => {
+  const response = await apiClient.post(`/bands/${bandId}/follow`);
+  return response.data;
+};

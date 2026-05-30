@@ -53,8 +53,12 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/api/v1/users/login",
                     "/api/v1/users/register",
+                    "/api/v1/users/find-id",
+                    "/api/v1/users/find-password",
                     "/api/v1/uploads",
-                    "/uploads/**"
+                    "/uploads/**",
+                    "/ws-chat/**",
+                    "/error"
                 ).permitAll()
                 .anyRequest().authenticated()
             )
@@ -87,7 +91,7 @@ public class SecurityConfig {
             "http://127.0.0.1:3000"
         ));
         
-        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(Arrays.asList("*"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);

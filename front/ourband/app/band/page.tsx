@@ -1,484 +1,409 @@
 "use client";
-import { useContext } from "react";
-
-// @ts-nocheck
+import { useContext, useEffect, useState, useRef } from "react";
 import { LayoutContext } from "@/components/layout/AppLayout";
-
-import { useState } from "react";
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Search, MapPin, Users, Plus, Star, Filter, Heart, Menu, ArrowRight, Edit3, X, Bell, ClipboardList, CheckCircle2, Clock } from "lucide-react";
-import { cn } from "@/lib/utils";;
-import type { LayoutContextType } from "@/components/layout/AppLayout";
-import { motion, AnimatePresence } from "motion/react";
+import { Search, MapPin, Plus, Star, Filter, Menu, X, Edit3, Image as ImageIcon, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  getSeekingPostsApi, 
+  createSeekingPostApi, 
+  updateSeekingPostApi,
+  deleteSeekingPostApi,
+  sendOfferApi, 
+  MemberSeekingPostData 
+} from "@/api/recruitment/recruitmentService";
+import { getUserInfoApi } from "@/api/account/userService";
+import { getMyBandsApi, MyBandData } from "@/api/band/bandService";
+import { uploadToCloudflare } from "@/lib/cloudflare";
 
-const BANDS_RECRUITING = [
-  { id: 1, name: "시티팝 밴드 네온사인", loc: "서울 마포구", genre: "시티팝, R&B", seeking: ["보컬", "베이스"], date: "2시간 전" },
-  { id: 2, name: "메탈리카 헌정밴드", loc: "서울 강남구", genre: "헤비메탈", seeking: ["기타", "드럼"], date: "1일 전" },
-  { id: 3, name: "어쿠스틱 감성 잼", loc: "경기 성남시", genre: "어쿠스틱, 포크", seeking: ["건반"], date: "방금 전" }
-];
+const KOREA_REGIONS: Record<string, string[]> = {
+  "전국": [],
+  "서울특별시": ["전체", "강남구", "강동구", "강북구", "강서구", "관악구", "광진구", "구로구", "금천구", "노원구", "도봉구", "동대문구", "동작구", "마포구", "서대문구", "서초구", "성동구", "성북구", "송파구", "양천구", "영등포구", "용산구", "은평구", "종로구", "중구", "중랑구"],
+  "경기도": ["전체", "수원시", "고양시", "용인시", "성남시", "부천시", "안산시", "화성시", "남양주시", "안양시", "평택시", "의정부시", "파주시", "시흥시", "김포시", "광명시", "광주시", "군포시", "이천시", "오산시", "하남시", "양주시", "구리시", "안성시", "포천시", "의왕시", "여주시", "양평군", "동두천시", "과천시", "가평군", "연천군"],
+  "인천광역시": ["전체", "계양구", "남동구", "동구", "미추홀구", "부평구", "서구", "연수구", "중구", "강화군", "옹진군"],
+  "강원특별자치도": ["전체", "춘천시", "원주시", "강릉시", "동해시", "태백시", "속초시", "삼척시", "홍천군", "횡성군", "영월군", "평창군", "정선군", "철원군", "화천군", "양구군", "인제군", "고성군", "양양군"],
+  "충청남도": ["전체", "천안시", "공주시", "보령시", "아산시", "서산시", "논산시", "계룡시", "당진시", "금산군", "부여군", "서천군", "청양군", "홍성군", "예산군", "태안군"],
+  "충청북도": ["전체", "청주시", "충주시", "제천시", "보은군", "옥천군", "영동군", "증평군", "진천군", "괴산군", "음성군", "단양군"],
+  "대전광역시": ["전체", "대덕구", "동구", "서구", "유성구", "중구"],
+  "경상북도": ["전체", "포항시", "경주시", "김천시", "안동시", "구미시", "영주시", "영천시", "상주시", "문경시", "경산시", "군위군", "의성군", "청송군", "영양군", "영덕군", "청도군", "고령군", "성주군", "칠곡군", "예천군", "봉화군", "울진군", "울릉군"],
+  "경상남도": ["전체", "창원시", "진주시", "통영시", "사천시", "김해시", "밀양시", "거제시", "양산시", "의령군", "함안군", "창녕군", "고성군", "남해군", "하동군", "산청군", "함양군", "거창군", "합천군"],
+  "대구광역시": ["전체", "남구", "달서구", "동구", "북구", "서구", "수성구", "중구", "달성군"],
+  "부산광역시": ["전체", "강서구", "금정구", "남구", "동구", "동래구", "부산진구", "북구", "사상구", "사하구", "서구", "수영구", "연제구", "영도구", "중구", "해운대구", "기장군"],
+  "울산광역시": ["전체", "남구", "동구", "북구", "중구", "울주군"],
+  "전라북도": ["전체", "전주시", "군산시", "익산시", "정읍시", "남원시", "김제시", "완주군", "진안군", "무주군", "장수군", "임실군", "순창군", "고창군", "부안군"],
+  "전라남도": ["전체", "목포시", "여수시", "순천시", "나주시", "광양시", "담양군", "곡성군", "구례군", "고흥군", "보성군", "화순군", "장흥군", "강진군", "해남군", "영암군", "무안군", "함평군", "영광군", "장성군", "완도군", "진도군", "신안군"],
+  "광주광역시": ["전체", "광산구", "남구", "동구", "북구", "서구"],
+  "세종특별자치시": ["전체"],
+  "제주특별자치도": ["전체", "제주시", "서귀포시"]
+};
 
-const MEMBERS_SEEKING = [
-  { id: 1, name: "김기타 (28/남)", loc: "서울 관악구", inst: "기타", style: "블루스, 펑크", desc: "주말 합주 가능한 팀 찾습니다.", date: "1시간 전" },
-  { id: 2, name: "박드럼 (32/여)", loc: "서울 강남구", inst: "드럼", style: "모든 장르", desc: "10년차 드러머입니다. 즉시 투입 가능", date: "3시간 전" }
-];
-
-// Mock API Data for Status
-const MY_APPLICATIONS = [
-  { id: 1, type: "apply", targetName: "시티팝 밴드 네온사인", role: "베이스 지원", status: "pending", time: "어제" },
-  { id: 2, type: "offer", targetName: "김기타 (28/남)", role: "기타 영입 제안", status: "accepted", time: "3일 전" }
-];
-
-const RECEIVED_APPLICATIONS = [
-  { id: 3, type: "received_apply", targetName: "박보컬 (24/남)", role: "보컬 지원", status: "pending", time: "2시간 전" }
-];
-
-export default function BandPage() {
+export default function MemberSeekingPage() {
   const router = useRouter();
-  const navigate = (path: string) => router.push(path);;
-  const [activeTab, setActiveTab] = useState<"bands" | "members" | "status">("bands");
+  const navigate = (path: string) => router.push(path);
   const { openMenu } = useContext(LayoutContext);
   
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [myBands, setMyBands] = useState<MyBandData[]>([]);
+  const [posts, setPosts] = useState<MemberSeekingPostData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   // States for filtering & modals
-  const [bandFilters, setBandFilters] = useState({ loc: "전체 지역", pos: "전체 포지션", liked: false });
-  const [memberFilters, setMemberFilters] = useState({ loc: "전체 지역", pos: "전체 포지션", liked: false });
+  const [filters, setFilters] = useState({ loc1: "전국", loc2: "전체", pos: "전체 포지션" });
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<MemberSeekingPostData | null>(null);
+  const [removeExistingMedia, setRemoveExistingMedia] = useState(false);
   
-  // Interaction Tracking States
-  const [appliedBands, setAppliedBands] = useState<number[]>([]);
-  const [offeredMembers, setOfferedMembers] = useState<number[]>([]);
-  const [likedBands, setLikedBands] = useState<number[]>([]);
-  const [likedMembers, setLikedMembers] = useState<number[]>([]);
+  // Offer Modal States
+  const [offerModalTarget, setOfferModalTarget] = useState<MemberSeekingPostData | null>(null);
+  const [offerForm, setOfferForm] = useState({
+    bandId: "",
+    position: "",
+    message: ""
+  });
   
-  // Mock Notification State
-  const [mockNotification, setMockNotification] = useState<{ isOpen: boolean; type: "apply" | "offer"; id: number } | null>(null);
+  // Write Form States
+  const [writeForm, setWriteForm] = useState({
+    title: "",
+    content: "",
+    position: "",
+    loc1: "전국",
+    loc2: "전체",
+    genreStyle: ""
+  });
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Application Status State
-  const [receivedApps, setReceivedApps] = useState(RECEIVED_APPLICATIONS);
-  const [rejectModalTarget, setRejectModalTarget] = useState<number | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
+  useEffect(() => {
+    loadInitialData();
+  }, []);
 
-  const handleAcceptApp = (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
-    setReceivedApps(prev => prev.map(app => 
-      app.id === id ? { ...app, status: "accepted" } : app
-    ));
-    alert("요청을 수락했습니다.");
-  };
+  const loadInitialData = async () => {
+    try {
+      setIsLoading(true);
+      const user = await getUserInfoApi();
+      setCurrentUser(user);
+      
+      const bands = await getMyBandsApi();
+      setMyBands(bands);
 
-  const openRejectApp = (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
-    setRejectModalTarget(id);
-    setRejectReason("");
-  };
-
-  const handleRejectAppSubmit = () => {
-    if (rejectModalTarget !== null) {
-      setReceivedApps(prev => prev.map(app => 
-        app.id === rejectModalTarget ? { ...app, status: "rejected" } : app
-      ));
-      setRejectModalTarget(null);
-      setRejectReason("");
-      alert("요청을 거절했습니다.");
+      const seekingPosts = await getSeekingPostsApi();
+      setPosts(seekingPosts);
+    } catch (err) {
+      console.error("데이터 로드 실패:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Filter Logic
-  const filteredBands = BANDS_RECRUITING.filter(band => {
-    const matchLoc = bandFilters.loc === "전체 지역" || band.loc.includes(bandFilters.loc);
-    const matchPos = bandFilters.pos === "전체 포지션" || band.seeking.includes(bandFilters.pos);
-    const matchLiked = !bandFilters.liked || likedBands.includes(band.id);
-    return matchLoc && matchPos && matchLiked;
+  const filteredPosts = posts.filter(post => {
+    let matchLoc = true;
+    if (filters.loc1 !== "전국") {
+      if (filters.loc2 === "전체") {
+        matchLoc = post.location?.includes(filters.loc1) || false;
+      } else {
+        matchLoc = post.location?.includes(`${filters.loc1} ${filters.loc2}`) || false;
+      }
+    }
+    const matchPos = filters.pos === "전체 포지션" || post.position?.includes(filters.pos);
+    return matchLoc && matchPos;
   });
 
-  const filteredMembers = MEMBERS_SEEKING.filter(member => {
-    const matchLoc = memberFilters.loc === "전체 지역" || member.loc.includes(memberFilters.loc);
-    const matchPos = memberFilters.pos === "전체 포지션" || member.inst.includes(memberFilters.pos);
-    const matchLiked = !memberFilters.liked || likedMembers.includes(member.id);
-    return matchLoc && matchPos && matchLiked;
-  });
-
-  const currentFilters = activeTab === "bands" ? bandFilters : memberFilters;
-  const updateFilter = (key: "loc" | "pos" | "liked", value: string | boolean) => {
-    if (activeTab === "bands") setBandFilters(prev => ({ ...prev, [key]: value }));
-    else if (activeTab === "members") setMemberFilters(prev => ({ ...prev, [key]: value }));
+  const updateFilter = (key: "loc1" | "loc2" | "pos", value: string) => {
+    if (key === "loc1") {
+      setFilters(prev => ({ ...prev, loc1: value, loc2: "전체" }));
+    } else {
+      setFilters(prev => ({ ...prev, [key]: value }));
+    }
   };
 
-  const toggleLikeBand = (id: number) => {
-    setLikedBands(prev => prev.includes(id) ? prev.filter(bId => bId !== id) : [...prev, id]);
+  const handleWriteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!writeForm.position || !writeForm.title || !writeForm.content) {
+      alert("필수 항목을 입력해주세요.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      let mediaUrl = editingPost && !removeExistingMedia ? editingPost.mediaUrl : null;
+      let mediaType = editingPost && !removeExistingMedia ? editingPost.mediaType : null;
+      
+      if (mediaFile) {
+        mediaUrl = await uploadToCloudflare(mediaFile);
+        mediaType = mediaFile.type.startsWith('video/') ? 'VIDEO' : 'IMAGE';
+      }
+
+      const finalLocation = writeForm.loc1 === "전국" 
+        ? "전국" 
+        : writeForm.loc2 === "전체" 
+          ? writeForm.loc1 
+          : `${writeForm.loc1} ${writeForm.loc2}`;
+
+      const payload = {
+        title: writeForm.title,
+        content: writeForm.content,
+        position: writeForm.position,
+        location: finalLocation,
+        genreStyle: writeForm.genreStyle || "장르 무관",
+        mediaUrl,
+        mediaType,
+        status: "OPEN"
+      };
+
+      if (editingPost) {
+        await updateSeekingPostApi(editingPost.id, payload);
+        alert("구직글이 수정되었습니다!");
+      } else {
+        await createSeekingPostApi(payload);
+        alert("구직글이 등록되었습니다!");
+      }
+
+      setIsWriteModalOpen(false);
+      setEditingPost(null);
+      setWriteForm({ title: "", content: "", position: "", loc1: "전국", loc2: "전체", genreStyle: "" });
+      setMediaFile(null);
+      setRemoveExistingMedia(false);
+      loadInitialData(); // Reload posts
+    } catch (err) {
+      console.error(err);
+      alert("구직글 등록/수정에 실패했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const toggleLikeMember = (id: number) => {
-    setLikedMembers(prev => prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]);
+  const handleEditClick = (post: MemberSeekingPostData) => {
+    let loc1 = "전국";
+    let loc2 = "전체";
+    
+    if (post.location && post.location !== "전국") {
+      const parts = post.location.split(" ");
+      loc1 = parts[0];
+      loc2 = parts.length > 1 ? parts[1] : "전체";
+    }
+
+    setWriteForm({
+      title: post.title,
+      content: post.content,
+      position: post.position,
+      loc1,
+      loc2,
+      genreStyle: post.genreStyle
+    });
+    setEditingPost(post);
+    setRemoveExistingMedia(false);
+    setMediaFile(null);
+    setIsWriteModalOpen(true);
   };
 
-  const handleApply = (bandId: number) => {
-    if (appliedBands.includes(bandId)) return;
-    alert("지원서가 전송되었습니다.");
-    setAppliedBands(prev => [...prev, bandId]);
-    setMockNotification({ isOpen: true, type: "apply", id: bandId });
-    setTimeout(() => setMockNotification(null), 5000);
+  const handleDeleteClick = async (id: number) => {
+    if (!confirm("정말 이 구직글을 삭제하시겠습니까?")) return;
+    try {
+      await deleteSeekingPostApi(id);
+      alert("구직글이 삭제되었습니다.");
+      loadInitialData();
+    } catch (err) {
+      console.error(err);
+      alert("구직글 삭제에 실패했습니다.");
+    }
   };
 
-  const handleOffer = (memberId: number) => {
-    if (offeredMembers.includes(memberId)) return;
-    alert("영입 제안이 전송되었습니다.");
-    setOfferedMembers(prev => [...prev, memberId]);
-    setMockNotification({ isOpen: true, type: "offer", id: memberId });
-    setTimeout(() => setMockNotification(null), 5000);
+  const handleOfferSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!offerModalTarget) return;
+    if (!offerForm.bandId || !offerForm.position) {
+      alert("밴드와 제안할 포지션을 선택해주세요.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await sendOfferApi({
+        bandId: parseInt(offerForm.bandId),
+        targetUserId: offerModalTarget.userId,
+        seekingPostId: offerModalTarget.id,
+        position: offerForm.position,
+        message: offerForm.message
+      });
+
+      alert("영입 제안이 전송되었습니다.");
+      setOfferModalTarget(null);
+      setOfferForm({ bandId: "", position: "", message: "" });
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || "영입 제안에 실패했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="flex flex-col min-h-screen bg-background relative pb-20 overflow-x-hidden">
       
-      {/* MOCK PUSH NOTIFICATION (Simulating the receiver's perspective) */}
-      <AnimatePresence>
-        {mockNotification?.isOpen && (
-          <motion.div 
-            initial={{ y: -100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -100, opacity: 0 }}
-            className="fixed top-4 left-0 right-0 z-50 flex justify-center px-4"
-          >
-            <div 
-              onClick={() => navigate(`/chat/${mockNotification.id}?type=${mockNotification.type}&targetId=${mockNotification.id}`)}
-              className="bg-secondary border border-primary/50 shadow-[0_10px_40px_rgba(99,102,241,0.3)] rounded-2xl p-4 w-full max-w-md cursor-pointer hover:bg-slate-800 transition-colors flex gap-4"
-            >
-              <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center shrink-0">
-                <Bell className="text-primary" size={20} />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs font-bold text-primary mb-1">[테스트 알림: 상대방 시점]</p>
-                <h4 className="text-sm font-bold text-white mb-1">
-                  {mockNotification.type === "apply" 
-                    ? "새로운 밴드 지원자가 있습니다!" 
-                    : "새로운 밴드 영입 제안이 왔습니다!"}
-                </h4>
-                <p className="text-xs text-slate-400">클릭하여 채팅방을 열고 수락/거절을 선택하세요.</p>
-              </div>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setMockNotification(null); }}
-                className="text-slate-500 hover:text-white self-start"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <header className="px-6 pt-12 md:pt-8 bg-background/80 backdrop-blur-xl z-20 sticky top-0 md:px-8 border-b border-border">
-        <div className="flex items-center justify-between mb-5 pr-14 md:pr-16">
+      <header className="px-6 pt-12 md:pt-8 bg-background/80 backdrop-blur-xl z-20 sticky top-0 md:px-8 border-b border-border pb-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button onClick={openMenu} className="md:hidden text-slate-400 hover:text-white transition-colors">
               <Menu size={28} />
             </button>
-            <h1 className="text-3xl font-black tracking-tight text-white mb-0">Discover</h1>
+            <h1 className="text-3xl font-black tracking-tight text-white mb-0">멤버 찾기</h1>
           </div>
-          <button className="w-10 h-10 border border-border bg-secondary/50 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors shrink-0">
-            <Search size={18} />
-          </button>
-        </div>
-
-        {/* Create Band Banner Call to Action */}
-        <Link href="/band/create" 
-           className="w-full flex items-center justify-between bg-gradient-to-r from-indigo-500/10 to-purple-600/10 border border-indigo-500/20 rounded-2xl p-4 mb-6 hover:from-indigo-500/20 hover:to-purple-600/20 transition-all group"
-         >
-           <div className="flex items-center gap-4">
-             <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.4)] group-hover:scale-105 transition-transform">
-               <Users size={20} className="text-white" />
-             </div>
-             <div>
-               <h3 className="text-white font-bold text-sm md:text-base">나만의 밴드를 만들고 싶나요?</h3>
-               <p className="text-slate-400 text-xs mt-1">지금 바로 밴드를 결성하고 멤버를 모아보세요.</p>
-             </div>
-           </div>
-           <ArrowRight className="text-primary group-hover:translate-x-1 transition-transform" />
-        </Link>
-        
-        <div className="flex gap-6 mt-2 relative overflow-x-auto hide-scrollbar whitespace-nowrap">
-          {[
-            { id: "bands", label: "구인 (합류)" }, 
-            { id: "members", label: "구직 (영입)" }, 
-            { id: "status", label: "지원 현황" }
-          ].map((tab) => (
-            <button 
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={cn(
-                "pb-3 text-sm md:text-base font-bold transition-colors relative shrink-0",
-                activeTab === tab.id ? "text-white" : "text-slate-500 hover:text-slate-400"
-              )}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <motion.div layoutId="band-tab" className="absolute bottom-0 left-0 w-full h-[2px] bg-primary rounded-t-full shadow-[0_0_10px_rgba(99,102,241,0.8)]" />
-              )}
-            </button>
-          ))}
         </div>
       </header>
 
       <main className="p-6 md:p-8 space-y-6 flex-1 max-w-[1600px] w-full mx-auto">
         
-        {/* Filters (Hidden on Status Tab) */}
-        {activeTab !== "status" && (
-          <div className="flex justify-start gap-2 overflow-x-auto hide-scrollbar pb-2">
-             <button className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary border border-border rounded-lg text-xs font-bold text-slate-300 shrink-0 cursor-default">
-               <Filter size={14} /> 필터
-             </button>
+        {/* Filters */}
+        <div className="flex justify-start gap-2 overflow-x-auto hide-scrollbar pb-2">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary border border-border rounded-lg text-xs font-bold text-slate-300 shrink-0 cursor-default">
+            <Filter size={14} /> 필터
+            </button>
+            
+            <div className="relative shrink-0">
+            <select 
+                value={filters.loc1} 
+                onChange={(e) => updateFilter("loc1", e.target.value)}
+                className={cn(
+                "appearance-none flex items-center gap-1.5 px-3 py-1.5 pr-8 border rounded-lg text-xs font-bold hover:text-white outline-none cursor-pointer transition-colors",
+                filters.loc1 !== "전국" ? "bg-primary/20 border-primary/50 text-white" : "bg-secondary border-border text-slate-300"
+                )}
+            >
+                {Object.keys(KOREA_REGIONS).map(loc => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
+            </select>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-[10px]">▼</div>
+            </div>
 
-             <button 
-               onClick={() => updateFilter("liked", !currentFilters.liked)}
-               className={cn(
-                 "flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-bold transition-colors shrink-0",
-                 currentFilters.liked ? "bg-primary/20 border-primary/50 text-white" : "bg-secondary border-border text-slate-300 hover:text-white cursor-pointer"
-               )}
-             >
-               찜한 목록
-             </button>
-             
-             <div className="relative shrink-0">
-               <select 
-                 value={currentFilters.loc} 
-                 onChange={(e) => updateFilter("loc", e.target.value)}
-                 className={cn(
-                   "appearance-none flex items-center gap-1.5 px-3 py-1.5 pr-8 border rounded-lg text-xs font-bold hover:text-white outline-none cursor-pointer transition-colors",
-                   currentFilters.loc !== "전체 지역" ? "bg-primary/20 border-primary/50 text-white" : "bg-secondary border-border text-slate-300"
-                 )}
-               >
-                 <option value="전체 지역">전체 지역</option>
-                 <option value="서울">서울</option>
-                 <option value="경기">경기</option>
-               </select>
-               <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-[10px]">▼</div>
-             </div>
-
-             <div className="relative shrink-0">
-               <select 
-                 value={currentFilters.pos} 
-                 onChange={(e) => updateFilter("pos", e.target.value)}
-                 className={cn(
-                   "appearance-none flex items-center gap-1.5 px-3 py-1.5 pr-8 border rounded-lg text-xs font-bold hover:text-white outline-none cursor-pointer transition-colors",
-                   currentFilters.pos !== "전체 포지션" ? "bg-primary/20 border-primary/50 text-white" : "bg-secondary border-border text-slate-300"
-                 )}
-               >
-                 <option value="전체 포지션">전체 포지션</option>
-                 <option value="보컬">보컬</option>
-                 <option value="기타">기타</option>
-                 <option value="베이스">베이스</option>
-                 <option value="드럼">드럼</option>
-                 <option value="건반">건반</option>
-               </select>
-               <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-[10px]">▼</div>
-             </div>
-          </div>
-        )}
-
-        {/* Content Tabs */}
-        {activeTab === "bands" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-            {filteredBands.length > 0 ? filteredBands.map(band => (
-              <div key={band.id} className="bg-secondary/40 border border-border rounded-[1.5rem] p-5 flex flex-col hover:border-primary/30 transition-colors">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-800">
-                      <img src={`https://picsum.photos/seed/band${band.id}/100/100`} />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-white text-base md:text-lg">{band.name}</h4>
-                      <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><MapPin size={12}/> {band.loc}</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-slate-500 font-medium">{band.date}</span>
-                </div>
-                
-                <div className="bg-background/50 rounded-xl p-3 mb-4 border border-border/50">
-                  <p className="text-xs text-slate-400 mb-1">모집 파트</p>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {band.seeking.map(inst => (
-                      <span key={inst} className="bg-red-500/10 text-red-500 border border-red-500/20 text-[11px] font-bold px-2 py-1 rounded-md">{inst} 구함</span>
-                    ))}
-                    <span className="bg-secondary text-slate-300 border border-border text-[11px] font-bold px-2 py-1 rounded-md">{band.genre}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 mt-auto">
-                  <button 
-                    onClick={() => handleApply(band.id)} 
-                    disabled={appliedBands.includes(band.id)}
-                    className={cn(
-                      "flex-1 text-sm font-bold py-2.5 rounded-xl transition-all",
-                      appliedBands.includes(band.id)
-                        ? "bg-slate-800 text-slate-500 cursor-not-allowed shadow-none"
-                        : "bg-primary text-white hover:bg-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.2)]"
-                    )}
-                  >
-                    {appliedBands.includes(band.id) ? "지원 완료" : "지원하기"}
-                  </button>
-                  <button 
-                    onClick={() => toggleLikeBand(band.id)}
-                    className={cn(
-                      "w-10 h-10 flex items-center justify-center border rounded-xl transition-colors shrink-0",
-                      likedBands.includes(band.id) 
-                        ? "bg-rose-500/10 border-rose-500/30 text-rose-500"
-                        : "border-border text-slate-400 hover:text-rose-500 hover:border-rose-500/30 bg-secondary"
-                    )}
-                  >
-                    <Heart size={18} className={cn(likedBands.includes(band.id) && "fill-rose-500")} />
-                  </button>
-                </div>
-              </div>
-            )) : (
-              <div className="text-center py-10 text-slate-500">
-                조건에 맞는 밴드가 없습니다.
+            {filters.loc1 !== "전국" && KOREA_REGIONS[filters.loc1]?.length > 0 && (
+              <div className="relative shrink-0">
+              <select 
+                  value={filters.loc2} 
+                  onChange={(e) => updateFilter("loc2", e.target.value)}
+                  className={cn(
+                  "appearance-none flex items-center gap-1.5 px-3 py-1.5 pr-8 border rounded-lg text-xs font-bold hover:text-white outline-none cursor-pointer transition-colors",
+                  filters.loc2 !== "전체" ? "bg-primary/20 border-primary/50 text-white" : "bg-secondary border-border text-slate-300"
+                  )}
+              >
+                  {KOREA_REGIONS[filters.loc1].map(subLoc => (
+                    <option key={subLoc} value={subLoc}>{subLoc}</option>
+                  ))}
+              </select>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-[10px]">▼</div>
               </div>
             )}
-          </div>
-        ) : activeTab === "members" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-            {filteredMembers.length > 0 ? filteredMembers.map(member => (
-              <div key={member.id} className="bg-secondary/40 border border-border rounded-[1.5rem] p-5 flex flex-col hover:border-primary/30 transition-colors">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center gap-3">
-                     <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-800">
-                      <img src={`https://picsum.photos/seed/member${member.id}/100/100`} />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-white text-base md:text-lg">{member.name}  <span className="text-primary text-xs ml-1 bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded">{member.inst}</span></h4>
-                      <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><MapPin size={12}/> {member.loc} • {member.style}</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-slate-500 font-medium">{member.date}</span>
-                </div>
-                
-                <p className="text-sm text-slate-300 mb-4 bg-background/50 p-3 rounded-xl border border-border/50">"{member.desc}"</p>
 
-                <div className="flex items-center gap-2 mt-auto">
-                  <button 
-                    onClick={() => handleOffer(member.id)} 
-                    disabled={offeredMembers.includes(member.id)}
-                    className={cn(
-                      "flex-1 text-sm font-bold py-2.5 rounded-xl transition-all",
-                      offeredMembers.includes(member.id)
-                        ? "bg-slate-800 text-slate-500 cursor-not-allowed shadow-none"
-                        : "bg-white text-black hover:scale-[1.02]"
-                    )}
-                  >
-                    {offeredMembers.includes(member.id) ? "제안 완료" : "영입 제안"}
-                  </button>
-                  <button 
-                    onClick={() => toggleLikeMember(member.id)}
-                    className={cn(
-                      "w-10 h-10 flex items-center justify-center border rounded-xl transition-colors shrink-0",
-                      likedMembers.includes(member.id) 
-                        ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-500"
-                        : "border-border text-slate-400 hover:text-yellow-500 hover:border-yellow-500/30 bg-secondary"
-                    )}
-                  >
-                    <Star size={18} className={cn(likedMembers.includes(member.id) && "fill-yellow-500")} />
-                  </button>
-                </div>
-              </div>
-            )) : (
-               <div className="text-center py-10 text-slate-500">
-                 조건에 맞는 멤버가 없습니다.
-               </div>
-            )}
-          </div>
+            <div className="relative shrink-0">
+            <select 
+                value={filters.pos} 
+                onChange={(e) => updateFilter("pos", e.target.value)}
+                className={cn(
+                "appearance-none flex items-center gap-1.5 px-3 py-1.5 pr-8 border rounded-lg text-xs font-bold hover:text-white outline-none cursor-pointer transition-colors",
+                filters.pos !== "전체 포지션" ? "bg-primary/20 border-primary/50 text-white" : "bg-secondary border-border text-slate-300"
+                )}
+            >
+                <option value="전체 포지션">전체 포지션</option>
+                <option value="보컬">보컬</option>
+                <option value="기타">기타</option>
+                <option value="베이스">베이스</option>
+                <option value="드럼">드럼</option>
+                <option value="건반">건반</option>
+            </select>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-[10px]">▼</div>
+            </div>
+        </div>
+
+        {/* Content Grid */}
+        {isLoading ? (
+            <div className="text-center py-20 text-slate-500 font-bold">로딩 중...</div>
         ) : (
-          <div className="space-y-6">
-            {/* Status Tab Design */}
-            
-            <section>
-              <h3 className="text-sm font-bold text-slate-400 mb-3 flex items-center gap-2">
-                <ClipboardList size={16} /> 받은 요청 (내 공고)
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-                {receivedApps.map(req => (
-                  <div key={`recv-${req.id}`} onClick={() => navigate(`/chat/${req.id}?type=apply&targetId=${req.id}`)} className="bg-secondary border border-border rounded-xl p-4 flex flex-col cursor-pointer hover:border-primary/50 transition-colors">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center overflow-hidden shrink-0">
-                          <img src={`https://picsum.photos/seed/user${req.id}/50/50`} />
-                        </div>
-                        <div>
-                          <h4 className="text-white text-sm font-bold">{req.targetName}</h4>
-                          <p className="text-xs text-slate-400 mt-0.5">{req.role} • {req.time}</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        {req.status === "pending" ? (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20"><Clock size={12} /> 응답 대기</span>
-                        ) : req.status === "accepted" ? (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20"><CheckCircle2 size={12} /> 수락완료</span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-rose-500 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20"><X size={12} /> 거절됨</span>
-                        )}
-                      </div>
-                    </div>
-                    {req.status === "pending" && (
-                      <div className="flex gap-2 mt-2 pt-3 border-t border-border">
-                        <button onClick={(e) => handleAcceptApp(e, req.id)} className="flex-1 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-bold py-2 rounded-lg transition-colors">수락하기</button>
-                        <button onClick={(e) => openRejectApp(e, req.id)} className="flex-1 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/30 text-xs font-bold py-2 rounded-lg transition-colors">거절하기</button>
-                      </div>
-                    )}
-                    {req.status !== "pending" && (
-                       <div className="mt-2 text-right">
-                         <span className="text-[10px] text-primary">채팅방 이동 &rarr;</span>
-                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-sm font-bold text-slate-400 mb-3 flex items-center gap-2">
-                <ClipboardList size={16} /> 내가 보낸 요청
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-                {MY_APPLICATIONS.map(req => (
-                  <div key={`my-${req.id}`} onClick={() => navigate(`/chat/${req.id}?type=${req.type}&targetId=${req.id}`)} className="bg-secondary border border-border rounded-xl p-4 flex items-center justify-between cursor-pointer hover:border-primary/50 transition-colors">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+            {filteredPosts.length > 0 ? filteredPosts.map(post => (
+                <div key={post.id} className="bg-secondary/40 border border-border rounded-[1.5rem] p-5 flex flex-col hover:border-primary/30 transition-colors">
+                <div className="flex justify-between items-start mb-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
-                        {req.type === "apply" ? <img src={`https://picsum.photos/seed/b${req.id}/50/50`} /> : <img src={`https://picsum.photos/seed/user${req.id}/50/50`} />}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-bold border", req.type === "apply" ? "text-indigo-400 border-indigo-400/30 bg-indigo-400/10" : "text-rose-400 border-rose-400/30 bg-rose-400/10")}>
-                            {req.type === "apply" ? "지원" : "제안"}
-                          </span>
-                          <h4 className="text-white text-sm font-bold">{req.targetName}</h4>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">{req.role} • {req.time}</p>
-                      </div>
+                    <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-800">
+                        {post.authorProfileImageUrl ? (
+                            <img src={post.authorProfileImageUrl} alt={post.authorName} className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">{post.authorName.charAt(0)}</div>
+                        )}
                     </div>
                     <div>
-                      {req.status === "pending" ? (
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20"><Clock size={12} /> 심사중</span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20"><CheckCircle2 size={12} /> 수락됨</span>
-                      )}
+                        <h4 className="font-bold text-white text-base md:text-lg">{post.authorName} <span className="text-primary text-xs ml-1 bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded">{post.position}</span></h4>
+                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><MapPin size={12}/> {post.location} • {post.genreStyle}</p>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-            
-          </div>
+                    </div>
+                    
+                    {currentUser?.userId === post.userId && (
+                      <div className="flex gap-2">
+                        <button onClick={() => handleEditClick(post)} className="text-slate-400 hover:text-white transition-colors" title="수정">
+                          <Edit3 size={16} />
+                        </button>
+                        <button onClick={() => handleDeleteClick(post.id)} className="text-slate-400 hover:text-red-400 transition-colors" title="삭제">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                </div>
+                
+                <h5 className="text-white font-bold text-sm mb-2">{post.title}</h5>
+                <p className="text-sm text-slate-300 mb-4 bg-background/50 p-3 rounded-xl border border-border/50 line-clamp-3">{post.content}</p>
+
+                {post.mediaUrl && (
+                    <div className="mb-4 rounded-xl overflow-hidden bg-black/50 border border-border/50 aspect-video flex items-center justify-center">
+                        {post.mediaType === 'VIDEO' ? (
+                            <video src={post.mediaUrl} controls className="max-w-full max-h-full" />
+                        ) : (
+                            <img src={post.mediaUrl} alt="media" className="max-w-full max-h-full object-contain" />
+                        )}
+                    </div>
+                )}
+
+                <div className="flex items-center gap-2 mt-auto">
+                    <button 
+                    onClick={() => {
+                        if (!currentUser) {
+                            alert("로그인이 필요합니다.");
+                            return;
+                        }
+                        if (currentUser.userId === post.userId) {
+                            alert("본인의 게시글에는 제안할 수 없습니다.");
+                            return;
+                        }
+                        setOfferModalTarget(post);
+                    }} 
+                    className="flex-1 text-sm font-bold py-2.5 rounded-xl transition-all bg-white text-black hover:scale-[1.02]"
+                    >
+                    영입 제안
+                    </button>
+                </div>
+                </div>
+            )) : (
+                <div className="text-center py-10 text-slate-500 col-span-full">
+                조건에 맞는 멤버가 없습니다.
+                </div>
+            )}
+            </div>
         )}
       </main>
 
       {/* Write Post FAB */}
-      {activeTab !== "status" && (
-        <button 
-          onClick={() => setIsWriteModalOpen(true)}
-          className="fixed bottom-24 md:bottom-12 right-6 w-14 h-14 bg-primary hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all z-30 hover:scale-105"
-        >
-          <Edit3 size={24} />
-        </button>
-      )}
+      <button 
+        onClick={() => {
+            if (!currentUser) {
+                alert("로그인이 필요합니다.");
+                return;
+            }
+            setIsWriteModalOpen(true);
+        }}
+        className="fixed bottom-24 md:bottom-12 right-6 w-14 h-14 bg-primary hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all z-30 hover:scale-105"
+      >
+        <Edit3 size={24} />
+      </button>
 
       {/* Write Post Modal */}
       <AnimatePresence>
@@ -496,76 +421,145 @@ export default function BandPage() {
               className="bg-secondary w-full max-w-lg rounded-[2rem] p-6 md:p-8 border border-border shadow-2xl relative my-auto mt-20"
             >
               <button 
-                onClick={() => setIsWriteModalOpen(false)}
+                onClick={() => {
+                  setIsWriteModalOpen(false);
+                  setEditingPost(null);
+                  setWriteForm({ title: "", content: "", position: "", loc1: "전국", loc2: "전체", genreStyle: "" });
+                  setMediaFile(null);
+                  setRemoveExistingMedia(false);
+                }}
                 className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"
                 type="button"
               >
                 <X size={24} />
               </button>
               
-              <h2 className="text-2xl font-black text-white mb-6">구인구직 작성</h2>
+              <h2 className="text-2xl font-black text-white mb-6">{editingPost ? '구직글 수정' : '구직글 작성'}</h2>
               
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  alert("성공적으로 글이 등록되었습니다!");
-                  setIsWriteModalOpen(false);
-                }} 
-                className="space-y-5"
-              >
+              <form onSubmit={handleWriteSubmit} className="space-y-5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-2">게시 유형</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="flex items-center justify-center gap-2 bg-background border border-border rounded-xl p-3.5 cursor-pointer hover:border-primary/50 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10">
-                      <input type="radio" name="postType" value="recruit" defaultChecked className="hidden" />
-                      <span className="text-white text-sm font-bold">밴드 구인 (멤버 구함)</span>
-                    </label>
-                    <label className="flex items-center justify-center gap-2 bg-background border border-border rounded-xl p-3.5 cursor-pointer hover:border-primary/50 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10">
-                      <input type="radio" name="postType" value="seek" className="hidden" />
-                      <span className="text-white text-sm font-bold">개인 구직 (밴드 구함)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-2">대상 포지션</label>
+                  <label className="block text-xs font-bold text-slate-400 mb-2">포지션</label>
                   <div className="relative">
-                    <select defaultValue="" className="w-full bg-background border border-border rounded-xl py-3.5 px-4 text-sm text-white appearance-none focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer" required>
+                    <select 
+                      value={writeForm.position}
+                      onChange={(e) => setWriteForm({...writeForm, position: e.target.value})}
+                      className="w-full bg-background border border-border rounded-xl py-3.5 px-4 text-sm text-white appearance-none focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer" 
+                      required
+                    >
                       <option value="" disabled>포지션을 선택하세요</option>
                       <option value="보컬">보컬</option>
                       <option value="기타">기타</option>
                       <option value="베이스">베이스</option>
                       <option value="드럼">드럼</option>
-                      <option value="건반">건반/피아노</option>
+                      <option value="건반">건반</option>
                     </select>
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-2">제목 / 한 줄 소개</label>
-                  <input type="text" placeholder="예: [보컬] 주말 합주 펑크 밴드 모집합니다" className="w-full bg-background border border-border rounded-xl px-4 py-3.5 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none" required />
+                  <label className="block text-xs font-bold text-slate-400 mb-2">지역 및 선호 장르</label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="relative">
+                      <select 
+                        value={writeForm.loc1}
+                        onChange={(e) => setWriteForm({...writeForm, loc1: e.target.value, loc2: "전체"})}
+                        className="w-full bg-background border border-border rounded-xl py-3.5 px-4 text-sm text-white appearance-none focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer" 
+                      >
+                        {Object.keys(KOREA_REGIONS).map(loc => (
+                          <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                    </div>
+
+                    <div className="relative">
+                      <select 
+                        value={writeForm.loc2}
+                        onChange={(e) => setWriteForm({...writeForm, loc2: e.target.value})}
+                        className="w-full bg-background border border-border rounded-xl py-3.5 px-4 text-sm text-white appearance-none focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer" 
+                        disabled={writeForm.loc1 === "전국" || !KOREA_REGIONS[writeForm.loc1]?.length}
+                      >
+                        {writeForm.loc1 === "전국" || !KOREA_REGIONS[writeForm.loc1]?.length ? (
+                          <option value="전체">해당 없음</option>
+                        ) : (
+                          KOREA_REGIONS[writeForm.loc1].map(subLoc => (
+                            <option key={subLoc} value={subLoc}>{subLoc}</option>
+                          ))
+                        )}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                    </div>
+
+                    <input type="text" placeholder="선호 장르 (예: 팝, 락)" value={writeForm.genreStyle} onChange={(e) => setWriteForm({...writeForm, genreStyle: e.target.value})} className="w-full bg-background border border-border rounded-xl px-4 py-3.5 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none" required />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-2">상세 내용 (조건, 스타일 등)</label>
-                  <textarea rows={4} placeholder="경력, 장르, 합주 가능 시간, 기타 조건 등을 자세히 적어주세요!" className="w-full bg-background border border-border rounded-xl px-4 py-3.5 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none" required />
+                  <label className="block text-xs font-bold text-slate-400 mb-2">제목 / 한 줄 소개</label>
+                  <input type="text" placeholder="예: [보컬] 주말 합주 가능한 펑크 밴드 모집합니다" value={writeForm.title} onChange={(e) => setWriteForm({...writeForm, title: e.target.value})} className="w-full bg-background border border-border rounded-xl px-4 py-3.5 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none" required />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-2">상세 내용 (경력, 원하는 팀 성향 등)</label>
+                  <textarea rows={4} placeholder="자세히 적어주세요!" value={writeForm.content} onChange={(e) => setWriteForm({...writeForm, content: e.target.value})} className="w-full bg-background border border-border rounded-xl px-4 py-3.5 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none" required />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-2">연주 영상 또는 사진 (선택)</label>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      type="button" 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center justify-center gap-2 px-4 py-3 bg-background border border-border rounded-xl text-sm font-bold text-slate-300 hover:text-white transition-colors flex-1"
+                    >
+                      <ImageIcon size={18} /> {(mediaFile || (editingPost?.mediaUrl && !removeExistingMedia)) ? '파일 변경' : '미디어 첨부'}
+                    </button>
+                    {(mediaFile || (editingPost?.mediaUrl && !removeExistingMedia)) && (
+                        <div className="flex items-center gap-2 bg-background border border-border px-3 py-2 rounded-xl">
+                          <span className="text-xs text-primary truncate max-w-[120px]">
+                            {mediaFile ? mediaFile.name : '기존 파일 첨부됨'}
+                          </span>
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              setMediaFile(null);
+                              if (editingPost) setRemoveExistingMedia(true);
+                              if (fileInputRef.current) fileInputRef.current.value = '';
+                            }}
+                            className="text-slate-500 hover:text-red-400 flex items-center justify-center bg-slate-800 rounded-full w-5 h-5 shrink-0"
+                            title="파일 삭제"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                    )}
+                  </div>
+                  <input type="file" accept="image/*,video/*" className="hidden" ref={fileInputRef} onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                          setMediaFile(e.target.files[0]);
+                          setRemoveExistingMedia(false);
+                      }
+                  }} />
                 </div>
                 
                 <button 
                   type="submit"
-                  className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-black rounded-xl py-4 mt-2 shadow-[0_0_20px_rgba(99,102,241,0.3)] transition-all"
+                  disabled={isSubmitting}
+                  className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-black rounded-xl py-4 mt-2 shadow-[0_0_20px_rgba(99,102,241,0.3)] transition-all disabled:opacity-50"
                 >
-                  등록하기
+                  {isSubmitting ? "처리 중..." : editingPost ? "수정하기" : "등록하기"}
                 </button>
               </form>
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
 
-        {rejectModalTarget !== null && (
+      {/* Offer Modal */}
+      <AnimatePresence>
+        {offerModalTarget !== null && (
           <motion.div 
-            key="reject-app-modal"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -575,32 +569,75 @@ export default function BandPage() {
               initial={{ y: "100%", opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
-              className="bg-secondary w-full max-w-sm rounded-[2rem] p-6 border border-border shadow-2xl relative"
+              className="bg-secondary w-full max-w-md rounded-[2rem] p-6 border border-border shadow-2xl relative"
             >
-              <button onClick={() => setRejectModalTarget(null)} className="absolute top-6 right-6 text-slate-400 hover:text-white"><X size={24} /></button>
-              <h2 className="text-xl font-black text-white mb-2">요청 거절</h2>
-              <p className="text-sm text-slate-400 mb-6">거절 사유를 작성해 주세요. (선택사항)</p>
+              <button onClick={() => setOfferModalTarget(null)} type="button" className="absolute top-6 right-6 text-slate-400 hover:text-white"><X size={24} /></button>
+              <h2 className="text-xl font-black text-white mb-2">영입 제안 보내기</h2>
+              <p className="text-sm text-slate-400 mb-6"><strong className="text-white">{offerModalTarget.authorName}</strong>님에게 영입을 제안합니다.</p>
               
-              <div className="space-y-4">
-                <textarea 
-                  rows={4}
-                  placeholder="예: 현재 모집 포지션과 맞지 않아 거절합니다."
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none"
-                />
+              <form onSubmit={handleOfferSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-2">어느 밴드로 제안할까요?</label>
+                  <div className="relative">
+                    <select 
+                      value={offerForm.bandId}
+                      onChange={(e) => setOfferForm({...offerForm, bandId: e.target.value})}
+                      className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white appearance-none focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer" 
+                      required
+                    >
+                      <option value="" disabled>밴드를 선택하세요</option>
+                      {myBands.map(band => (
+                          <option key={band.id} value={band.id}>{band.name}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-2">제안 포지션</label>
+                  <div className="relative">
+                    <select 
+                      value={offerForm.position}
+                      onChange={(e) => setOfferForm({...offerForm, position: e.target.value})}
+                      className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white appearance-none focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer" 
+                      required
+                    >
+                      <option value="" disabled>포지션을 선택하세요</option>
+                      <option value="보컬">보컬</option>
+                      <option value="기타">기타</option>
+                      <option value="베이스">베이스</option>
+                      <option value="드럼">드럼</option>
+                      <option value="건반">건반</option>
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-2">메시지 (선택)</label>
+                  <textarea 
+                    rows={3}
+                    placeholder="환영 인사 등 메시지를 남겨보세요."
+                    value={offerForm.message}
+                    onChange={(e) => setOfferForm({...offerForm, message: e.target.value})}
+                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none"
+                  />
+                </div>
                 
                 <button 
-                  onClick={handleRejectAppSubmit}
-                  className="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl py-4 mt-2 transition-all shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full bg-primary hover:bg-indigo-600 text-white font-bold rounded-xl py-4 mt-2 transition-all shadow-[0_0_15px_rgba(99,102,241,0.3)] disabled:opacity-50"
                 >
-                  거절하기
+                  {isSubmitting ? "전송 중..." : "제안 보내기"}
                 </button>
-              </div>
+              </form>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
   );
 }
