@@ -10,8 +10,11 @@ import { cn } from "@/lib/utils";
 import { getStudioApi, deleteStudioApi, reportStudioApi, type StudioData } from "@/api/studio/studioService";
 import { getUserInfoApi } from "@/api/account/userService";
 import { RegisterStudioModal } from "@/components/studio/RegisterStudioModal";
+import toast from "react-hot-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 export default function StudioIdDynamicPage() {
+  const { confirm } = useConfirm();
   const params = useParams();
   const studioId = params?.id as string;
   const router = useRouter();
@@ -129,13 +132,13 @@ export default function StudioIdDynamicPage() {
                 </button>
                 <button 
                   onClick={async () => {
-                    if (confirm("정말 이 합주실 정보를 삭제하시겠습니까?")) {
+                    if (await confirm({ message: "정말 이 합주실 정보를 삭제하시겠습니까?", isDestructive: true })) {
                       try {
                         await deleteStudioApi(studio.id);
-                        alert("삭제되었습니다.");
+                        toast.success("삭제되었습니다.");
                         router.push('/studio');
                       } catch (err) {
-                        alert("삭제에 실패했습니다.");
+                        toast.error("삭제에 실패했습니다.");
                       }
                     }
                   }}
@@ -297,7 +300,7 @@ export default function StudioIdDynamicPage() {
           
           <div className="flex gap-2">
             <button 
-              onClick={() => alert("1:1 채팅 기능은 준비 중입니다.")}
+              onClick={() => toast.error("1:1 채팅 기능은 준비 중입니다.")}
               className="px-5 py-3.5 rounded-xl font-bold text-white text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 border border-slate-600"
             >
               <MessageCircle size={18} />
@@ -315,7 +318,7 @@ export default function StudioIdDynamicPage() {
               </a>
             ) : (
               <button 
-                onClick={() => alert("등록된 외부 예약 링크가 없습니다. 1:1 대화로 문의해주세요.")}
+                onClick={() => toast.error("등록된 외부 예약 링크가 없습니다. 1:1 대화로 문의해주세요.")}
                 className="px-5 py-3.5 rounded-xl font-bold text-white text-sm transition-all flex items-center gap-2 bg-primary hover:bg-primary/90"
               >
                 예약 문의하기
@@ -430,14 +433,14 @@ export default function StudioIdDynamicPage() {
                 </button>
                 <button 
                   onClick={async () => {
-                    if (!reportReason.trim()) return alert('신고 사유를 입력해주세요.');
+                    if (!reportReason.trim()) return toast.error('신고 사유를 입력해주세요.');
                     try {
                       await reportStudioApi(studio.id, reportReason);
-                      alert('신고가 접수되었습니다.');
+                      toast.success('신고가 접수되었습니다.');
                       setIsReportModalOpen(false);
                       setReportReason("");
                     } catch (err) {
-                      alert('신고 접수에 실패했습니다.');
+                      toast.error('신고 접수에 실패했습니다.');
                     }
                   }}
                   className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-500 transition"

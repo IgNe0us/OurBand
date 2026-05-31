@@ -14,8 +14,10 @@ import {
   MemberSeekingPostData 
 } from "@/api/recruitment/recruitmentService";
 import { getUserInfoApi } from "@/api/account/userService";
-import { getMyBandsApi, MyBandData } from "@/api/band/bandService";
+import { getMyBandsApi, getBandProfileApi, MyBandData } from "@/api/band/bandService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
+import toast from "react-hot-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 const KOREA_REGIONS: Record<string, string[]> = {
   "전국": [],
@@ -39,6 +41,7 @@ const KOREA_REGIONS: Record<string, string[]> = {
 };
 
 export default function MemberSeekingPage() {
+  const { confirm } = useConfirm();
   const router = useRouter();
   const navigate = (path: string) => router.push(path);
   const { openMenu } = useContext(LayoutContext);
@@ -61,6 +64,41 @@ export default function MemberSeekingPage() {
     position: "",
     message: ""
   });
+  const [availablePositions, setAvailablePositions] = useState<string[]>([]);
+  const [isLoadingPositions, setIsLoadingPositions] = useState(false);
+  const [isTargetAlreadyMember, setIsTargetAlreadyMember] = useState(false);
+
+  useEffect(() => {
+    const fetchPositions = async () => {
+      if (!offerForm.bandId) {
+        setAvailablePositions([]);
+        setIsTargetAlreadyMember(false);
+        return;
+      }
+      try {
+        setIsLoadingPositions(true);
+        const profile = await getBandProfileApi(offerForm.bandId);
+        
+        const isMember = profile.positions.some(p => p.userId === offerModalTarget?.userId);
+        setIsTargetAlreadyMember(isMember);
+
+        if (isMember) {
+          setAvailablePositions([]);
+        } else {
+          // userId가 없는 포지션만 필터링 (구인 중)
+          const recruiting = profile.positions
+            .filter(p => !p.userId)
+            .map(p => p.role);
+          setAvailablePositions(recruiting);
+        }
+      } catch (err) {
+        console.error("Failed to fetch band profile for positions:", err);
+      } finally {
+        setIsLoadingPositions(false);
+      }
+    };
+    fetchPositions();
+  }, [offerForm.bandId, offerModalTarget]);
   
   // Write Form States
   const [writeForm, setWriteForm] = useState({
@@ -122,7 +160,7 @@ export default function MemberSeekingPage() {
   const handleWriteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!writeForm.position || !writeForm.title || !writeForm.content) {
-      alert("필수 항목을 입력해주세요.");
+      toast.error("필수 항목을 입력해주세요.");
       return;
     }
 
@@ -155,10 +193,10 @@ export default function MemberSeekingPage() {
 
       if (editingPost) {
         await updateSeekingPostApi(editingPost.id, payload);
-        alert("구직글이 수정되었습니다!");
+        toast.success("구직글이 수정되었습니다!");
       } else {
         await createSeekingPostApi(payload);
-        alert("구직글이 등록되었습니다!");
+        toast.success("구직글이 등록되었습니다!");
       }
 
       setIsWriteModalOpen(false);
@@ -169,7 +207,7 @@ export default function MemberSeekingPage() {
       loadInitialData(); // Reload posts
     } catch (err) {
       console.error(err);
-      alert("구직글 등록/수정에 실패했습니다.");
+      toast.error("구직글 등록/수정에 실패했습니다.");
     } finally {
       setIsSubmitting(false);
     }
@@ -200,14 +238,14 @@ export default function MemberSeekingPage() {
   };
 
   const handleDeleteClick = async (id: number) => {
-    if (!confirm("정말 이 구직글을 삭제하시겠습니까?")) return;
+    if (!await confirm({ message: "정말 이 구직글을 삭제하시겠습니까?", isDestructive: true })) return;
     try {
       await deleteSeekingPostApi(id);
-      alert("구직글이 삭제되었습니다.");
+      toast.success("구직글이 삭제되었습니다.");
       loadInitialData();
     } catch (err) {
       console.error(err);
-      alert("구직글 삭제에 실패했습니다.");
+      toast.error("구직글 삭제에 실패했습니다.");
     }
   };
 
@@ -215,7 +253,7 @@ export default function MemberSeekingPage() {
     e.preventDefault();
     if (!offerModalTarget) return;
     if (!offerForm.bandId || !offerForm.position) {
-      alert("밴드와 제안할 포지션을 선택해주세요.");
+      toast.error("밴드와 제안할 포지션을 선택해주세요.");
       return;
     }
 
@@ -229,12 +267,12 @@ export default function MemberSeekingPage() {
         message: offerForm.message
       });
 
-      alert("영입 제안이 전송되었습니다.");
+      toast.success("영입 제안이 전송되었습니다.");
       setOfferModalTarget(null);
       setOfferForm({ bandId: "", position: "", message: "" });
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.message || "영입 제안에 실패했습니다.");
+      toast.error(err.response?.data?.message || "영입 제안에 실패했습니다.");
     } finally {
       setIsSubmitting(false);
     }
@@ -367,18 +405,29 @@ export default function MemberSeekingPage() {
                     <button 
                     onClick={() => {
                         if (!currentUser) {
-                            alert("로그인이 필요합니다.");
+                            toast.error("로그인이 필요합니다.");
                             return;
                         }
                         if (currentUser.userId === post.userId) {
-                            alert("본인의 게시글에는 제안할 수 없습니다.");
+                            toast.error("본인의 게시글에는 제안할 수 없습니다.");
+                            return;
+                        }
+                        const isLeader = myBands.some(b => b.isLeader);
+                        if (!isLeader) {
+                            toast.error("밴드의 리더만 영입 제안을 보낼 수 있습니다.");
                             return;
                         }
                         setOfferModalTarget(post);
                     }} 
-                    className="flex-1 text-sm font-bold py-2.5 rounded-xl transition-all bg-white text-black hover:scale-[1.02]"
+                    disabled={currentUser?.userId === post.userId}
+                    className={cn(
+                      "flex-1 text-sm font-bold py-2.5 rounded-xl transition-all",
+                      currentUser?.userId === post.userId 
+                        ? "bg-slate-700 text-slate-500 cursor-not-allowed" 
+                        : "bg-white text-black hover:scale-[1.02]"
+                    )}
                     >
-                    영입 제안
+                    {currentUser?.userId === post.userId ? "내 구직글" : "영입 제안"}
                     </button>
                 </div>
                 </div>
@@ -395,7 +444,7 @@ export default function MemberSeekingPage() {
       <button 
         onClick={() => {
             if (!currentUser) {
-                alert("로그인이 필요합니다.");
+                toast.error("로그인이 필요합니다.");
                 return;
             }
             setIsWriteModalOpen(true);
@@ -586,7 +635,7 @@ export default function MemberSeekingPage() {
                       required
                     >
                       <option value="" disabled>밴드를 선택하세요</option>
-                      {myBands.map(band => (
+                      {myBands.filter(band => band.isLeader).map(band => (
                           <option key={band.id} value={band.id}>{band.name}</option>
                       ))}
                     </select>
@@ -600,15 +649,19 @@ export default function MemberSeekingPage() {
                     <select 
                       value={offerForm.position}
                       onChange={(e) => setOfferForm({...offerForm, position: e.target.value})}
-                      className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white appearance-none focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer" 
+                      className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white appearance-none focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer disabled:opacity-50" 
                       required
+                      disabled={isLoadingPositions || !offerForm.bandId || isTargetAlreadyMember || availablePositions.length === 0}
                     >
-                      <option value="" disabled>포지션을 선택하세요</option>
-                      <option value="보컬">보컬</option>
-                      <option value="기타">기타</option>
-                      <option value="베이스">베이스</option>
-                      <option value="드럼">드럼</option>
-                      <option value="건반">건반</option>
+                      <option value="" disabled>
+                        {isLoadingPositions ? "포지션 불러오는 중..." : 
+                         !offerForm.bandId ? "밴드를 먼저 선택하세요" : 
+                           isTargetAlreadyMember ? "이미 이 밴드에 가입된 유저입니다" : 
+                         availablePositions.length === 0 ? "구인 중인 포지션이 없습니다" : "포지션을 선택하세요"}
+                      </option>
+                      {availablePositions.map((pos, idx) => (
+                        <option key={`${pos}-${idx}`} value={pos}>{pos}</option>
+                      ))}
                     </select>
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
                   </div>
@@ -641,3 +694,6 @@ export default function MemberSeekingPage() {
     </div>
   );
 }
+
+
+

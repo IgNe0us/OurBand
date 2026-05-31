@@ -52,6 +52,12 @@ export const getUserInfoApi = async () => {
     return response.data;
 };
 
+// 특정 사용자 프로필 정보 가져오는 API 호출
+export const getUserProfileApi = async (userId: number) => {
+    const response = await apiClient.get(`/users/profile/${userId}`);
+    return response.data;
+};
+
 // 유저 프로필 업데이트 API 호출
 export const updateProfileImageApi = async (imageUrl: string, imageType: "PROFILE" | "COVER") => {
   return await apiClient.put('/users/profile/image', { 

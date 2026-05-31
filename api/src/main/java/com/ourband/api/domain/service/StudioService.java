@@ -9,6 +9,8 @@ import com.ourband.api.domain.model.Report;
 import com.ourband.api.domain.repository.StudioImageRepository;
 import com.ourband.api.domain.repository.StudioRepository;
 import com.ourband.api.domain.repository.StudioRoomRepository;
+import com.ourband.api.domain.repository.ProfileRepository;
+import com.ourband.api.domain.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -208,6 +210,23 @@ public class StudioService {
                 .status("PENDING")
                 .build();
         reportRepository.save(report);
+    }
+
+    private final ProfileRepository profileRepository;
+    private final NotificationService notificationService;
+
+    @Transactional
+    public void callEmergencySession(EmergencySessionRequestDTO request, Long senderId) {
+        List<com.ourband.api.domain.model.Profile> profiles = profileRepository.findByInstrumentAndLocation(request.getPosition(), request.getLocation());
+        for (com.ourband.api.domain.model.Profile p : profiles) {
+            Long receiverId = p.getUser().getUserId();
+            if (receiverId.equals(senderId)) continue;
+            
+            String detail = request.getDetailAddress() != null && !request.getDetailAddress().trim().isEmpty() 
+                            ? " (" + request.getDetailAddress() + ")" : "";
+            String message = String.format("긴급 대타 구인! %s%s 지역 %s 세션 (%s)", request.getLocation(), detail, request.getPosition(), request.getDatetime());
+            notificationService.send(receiverId, senderId, com.ourband.api.domain.model.NotificationType.INFO, "emergency", message);
+        }
     }
 
     private double calculateHaversineDistance(double lat1, double lon1, double lat2, double lon2) {

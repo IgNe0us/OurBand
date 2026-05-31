@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 // 💡 실제 프로젝트 구조에 맞게 API 호출 함수들을 임포트하세요.
 import { registerUserApi, loginUserApi } from "@/api/account/userService";
+import { KOREA_REGIONS } from "@/lib/regions";
 
 export default function RegisterPage() {
   const [accountType, setAccountType] = useState<"user" | "business">("user");
@@ -20,6 +21,8 @@ export default function RegisterPage() {
   const [instrument, setInstrument] = useState("");
   const [businessNumber, setBusinessNumber] = useState("");
   const [businessFile, setBusinessFile] = useState<File | null>(null);
+  const [region, setRegion] = useState("");
+  const [subRegion, setSubRegion] = useState("");
   
   // 💡 비동기 통신을 위한 로딩 및 에러 상태 추가
   const [isLoading, setIsLoading] = useState(false);
@@ -45,6 +48,10 @@ export default function RegisterPage() {
         setError("주 포지션을 선택해주세요.");
         return;
     }
+    if (accountType === "user" && (!region || !subRegion)) {
+        setError("활동 지역을 선택해주세요.");
+        return;
+    }
 
     if (!name || !email || !password) {
         setError("닉네임, 이메일, 비밀번호를 모두 입력해야 합니다.");
@@ -62,9 +69,8 @@ export default function RegisterPage() {
         password,
         type: accountType,
         instrument,
-        businessNumber
-        // 💡 백엔드 스펙에 따라 아래 데이터도 넘겨야 할 수 있습니다.
-        // accountType, instrument, businessNumber, 등
+        businessNumber,
+        location: `${region} ${subRegion}`.trim()
       };
 
       // 3. 회원가입 API 호출
@@ -220,6 +226,42 @@ export default function RegisterPage() {
                     <option value="other">기타 악기</option>
                   </select>
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                </div>
+
+                <label className="text-xs font-bold text-slate-400 pl-1 mt-4 block">활동 지역</label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <select
+                      value={region}
+                      onChange={(e) => {
+                        setRegion(e.target.value);
+                        setSubRegion("");
+                      }}
+                      className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-4 pr-8 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white appearance-none cursor-pointer"
+                      required
+                    >
+                      <option value="" disabled>시/도</option>
+                      {Object.keys(KOREA_REGIONS).map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                  </div>
+                  <div className="relative flex-1">
+                    <select
+                      value={subRegion}
+                      onChange={(e) => setSubRegion(e.target.value)}
+                      className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-4 pr-8 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white appearance-none cursor-pointer"
+                      required
+                      disabled={!region}
+                    >
+                      <option value="" disabled>시/군/구</option>
+                      {region && KOREA_REGIONS[region]?.map((sr) => (
+                        <option key={sr} value={sr}>{sr}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                  </div>
                 </div>
               </motion.div>
             ) : (

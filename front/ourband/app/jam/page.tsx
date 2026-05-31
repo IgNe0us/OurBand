@@ -11,10 +11,13 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";;
 import { motion, AnimatePresence } from "motion/react";
 
-import { searchJamPostsApi, createJamPostApi, toggleJamLikeApi, getJamCommentsApi, createJamCommentApi, incrementJamShareApi, type JamPostData, updateJamCommentApi, deleteJamCommentApi } from "@/api/jam/jamService";
+import { searchJamPostsApi, createJamPostApi, toggleJamLikeApi, getJamCommentsApi, createJamCommentApi, incrementJamShareApi, type JamPostData, updateJamCommentApi, deleteJamCommentApi, getJamPostApi } from "@/api/jam/jamService";
 import { getUserInfoApi, toggleFollowApi } from "@/api/account/userService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
-import { useRouter } from 'next/navigation';
+import { useUserProfile } from "@/store/userProfileContext";
+import { useRouter, useSearchParams } from 'next/navigation';
+import toast from "react-hot-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 function JamVideoItem({
   v,
@@ -31,7 +34,9 @@ function JamVideoItem({
   comments,
   setActiveShareId,
   setActiveDuetId,
-  onVisible
+
+  onVisible,
+  openUserProfile
 }: any) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -182,10 +187,12 @@ function JamVideoItem({
           </div>
         </div>
 
-        {/* Right Action Bar */}
         <div className="absolute right-4 bottom-28 md:bottom-32 flex flex-col items-center gap-7 z-10 pointer-events-auto">
           <div className="relative">
-            <div className="w-12 h-12 rounded-full border-[3px] border-white overflow-hidden shadow-lg cursor-pointer bg-slate-800">
+            <div 
+              className="w-12 h-12 rounded-full border-[3px] border-white overflow-hidden shadow-lg cursor-pointer bg-slate-800"
+              onClick={() => openUserProfile(Number(v.userId), v.authorName, v.authorProfileImageUrl)}
+            >
               {v.authorProfileImageUrl ? (
                 <img src={v.authorProfileImageUrl} alt="User" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
               ) : (
@@ -311,8 +318,12 @@ function JamVideoItem({
 }
 
 export default function JamPage() {
+  const { confirm } = useConfirm();
   const { openMenu } = useContext(LayoutContext);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const jamIdParam = searchParams.get("id");
+  const { openUserProfile } = useUserProfile();
 
   const [activeTab, setActiveTab] = useState<"FOLLOWING" | "RECOMMENDED">("RECOMMENDED");
 
@@ -331,23 +342,45 @@ export default function JamPage() {
   
   useEffect(() => {
     getUserInfoApi().then(res => setCurrentUserId(res.userId)).catch(() => {});
-    searchJamPostsApi().then(res => {
-      setVideos(res.content);
-      
-      const newLikedMap: Record<number, boolean> = {};
-      const newFollowingMap: Record<string, boolean> = {};
-      
-      res.content.forEach((v: JamPostData) => {
-        if (v.isLiked) newLikedMap[v.id] = true;
-        if (v.isFollowing && v.authorName) newFollowingMap[v.authorName] = true;
-      });
-      
-      setLikedMap(newLikedMap);
-      setFollowingMap(newFollowingMap);
+    
+    const fetchInitialData = async () => {
+      try {
+        let initialVideos: JamPostData[] = [];
+        
+        if (jamIdParam) {
+           try {
+             const specificVideo = await getJamPostApi(Number(jamIdParam));
+             initialVideos.push(specificVideo);
+           } catch (e) {
+             console.error("Failed to fetch specific jam video", e);
+           }
+        }
+        
+        const res = await searchJamPostsApi();
+        const otherVideos = res.content.filter((v: JamPostData) => v.id !== Number(jamIdParam));
+        initialVideos = [...initialVideos, ...otherVideos];
+        
+        setVideos(initialVideos);
+        
+        const newLikedMap: Record<number, boolean> = {};
+        const newFollowingMap: Record<string, boolean> = {};
+        
+        initialVideos.forEach((v: JamPostData) => {
+          if (v.isLiked) newLikedMap[v.id] = true;
+          if (v.isFollowing && v.authorName) newFollowingMap[v.authorName] = true;
+        });
+        
+        setLikedMap(newLikedMap);
+        setFollowingMap(newFollowingMap);
 
-      if (res.content.length > 0) setPlayingId(res.content[0].id);
-    }).catch(console.error);
-  }, []);
+        if (initialVideos.length > 0) setPlayingId(initialVideos[0].id);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    
+    fetchInitialData();
+  }, [jamIdParam]);
   
   // Modals state
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
@@ -397,7 +430,7 @@ export default function JamPage() {
           console.warn("Video access failed, trying audio only:", err);
           navigator.mediaDevices.getUserMedia({ video: false, audio: true })
             .then(setupStream)
-            .catch(() => alert("마이크 권한이 필요합니다."));
+            .catch(() => toast.error("마이크 권한이 필요합니다."));
         });
     } else {
       if (createLiveVideoRef.current?.srcObject) {
@@ -488,7 +521,7 @@ export default function JamPage() {
             .then(setupStream)
             .catch(audioErr => {
               console.error("Audio access also denied:", audioErr);
-              alert("마이크 접근 권한이 없거나 장치를 찾을 수 없습니다.");
+              toast.error("마이크 접근 권한이 없거나 장치를 찾을 수 없습니다.");
             });
         });
     } else {
@@ -512,7 +545,7 @@ export default function JamPage() {
     tempVideo.onloadedmetadata = () => {
       const originalDuration = originalVideoRef.current?.duration || 0;
       if (originalDuration > 0 && tempVideo.duration > originalDuration + 1) { // allow 1 sec leeway
-        alert("업로드하는 영상의 길이는 원본 영상의 길이를 초과할 수 없습니다!");
+        toast.error("업로드하는 영상의 길이는 원본 영상의 길이를 초과할 수 없습니다!");
         if (duetFileInputRef.current) duetFileInputRef.current.value = "";
         return;
       }
@@ -570,7 +603,7 @@ export default function JamPage() {
         originalVolume: originalVolume / 100,
         myVolume: myVolume / 100
       });
-      alert("듀엣 영상이 성공적으로 업로드되었습니다!");
+      toast.success("듀엣 영상이 성공적으로 업로드되었습니다!");
       setIsMixing(false);
       setActiveDuetId(null);
       setIsPreviewPlaying(false);
@@ -580,14 +613,14 @@ export default function JamPage() {
       // Refresh list
       searchJamPostsApi().then(res => setVideos(res.content));
     } catch (err) {
-      alert("업로드 중 오류가 발생했습니다.");
+      toast.error("업로드 중 오류가 발생했습니다.");
     } finally {
       setIsUploading(false);
     }
   };
 
   const handleCreateJamSubmit = async () => {
-    if (!newJamTitle.trim()) return alert("제목을 입력해주세요!");
+    if (!newJamTitle.trim()) return toast.error("제목을 입력해주세요!");
     setIsUploading(true);
     try {
       let finalMediaUrl = newJamMediaUrl;
@@ -605,7 +638,7 @@ export default function JamPage() {
         originalVolume: 1.0,
         myVolume: 1.0
       });
-      alert("오디오잼 게시물이 등록되었습니다!");
+      toast.success("오디오잼 게시물이 등록되었습니다!");
       setIsCreateModalOpen(false);
       setCreateStep("SELECT");
       setNewJamFile(null);
@@ -613,7 +646,7 @@ export default function JamPage() {
       setNewJamDesc("");
       searchJamPostsApi().then(res => setVideos(res.content));
     } catch (err) {
-      alert("등록 중 오류가 발생했습니다.");
+      toast.error("등록 중 오류가 발생했습니다.");
     } finally {
       setIsUploading(false);
     }
@@ -682,7 +715,7 @@ export default function JamPage() {
       setReplyingTo(null);
     } catch (err) {
       console.error(err);
-      alert("댓글 작성에 실패했습니다.");
+      toast.error("댓글 작성에 실패했습니다.");
     }
   };
 
@@ -696,12 +729,12 @@ export default function JamPage() {
       setEditText("");
     } catch (err) {
       console.error(err);
-      alert("댓글 수정에 실패했습니다.");
+      toast.error("댓글 수정에 실패했습니다.");
     }
   };
 
   const handleDeleteComment = async (videoId: number, commentId: number) => {
-    if (!confirm("댓글을 삭제하시겠습니까?")) return;
+    if (!await confirm({ message: "댓글을 삭제하시겠습니까?", isDestructive: true })) return;
     try {
       await deleteJamCommentApi(videoId, commentId);
       const updatedComments = await getJamCommentsApi(videoId);
@@ -709,7 +742,7 @@ export default function JamPage() {
       setVideos(prev => prev.map(v => v.id === videoId ? { ...v, commentCount: Math.max(0, v.commentCount - 1) } : v));
     } catch (err) {
       console.error(err);
-      alert("댓글 삭제에 실패했습니다.");
+      toast.error("댓글 삭제에 실패했습니다.");
     }
   };
 
@@ -719,7 +752,7 @@ export default function JamPage() {
         await navigator.clipboard.writeText(window.location.origin + `/jam?id=${activeShareId}`);
         await incrementJamShareApi(activeShareId);
         setVideos(prev => prev.map(v => v.id === activeShareId ? { ...v, shareCount: v.shareCount + 1 } : v));
-        alert("링크가 클립보드에 복사되었습니다.");
+        toast.success("링크가 클립보드에 복사되었습니다.");
         setActiveShareId(null);
       } catch (err) {
         console.error(err);
@@ -787,6 +820,7 @@ export default function JamPage() {
           setActiveShareId={setActiveShareId}
           setActiveDuetId={setActiveDuetId}
           onVisible={setPlayingId}
+          openUserProfile={openUserProfile}
         />
       ))}
 

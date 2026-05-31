@@ -8,7 +8,8 @@ import { useContext, useEffect, useState } from "react";
 import { ReportModal } from "@/components/common/ReportModal";
 import { WritePostModal } from "@/components/post/WritePostModal";
 import { LayoutContext } from "@/components/layout/AppLayout";
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useUserProfile } from '@/store/userProfileContext';
 import { MessageSquare, Calendar, Menu, Edit3, Flag, Settings, Play, Heart, Trash2, Users, Loader2, ThumbsUp, BarChart2, LogOut, User, Music } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
@@ -21,6 +22,8 @@ const getFirstImageFromHtml = (htmlString: string) => {
   return match ? match[1] : null;
 };
 import { getUserInfoApi } from "@/api/account/userService";
+import toast from "react-hot-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 const getRelativeTime = (dateString?: string) => {
   if (!dateString) return "";
@@ -39,11 +42,18 @@ const getRelativeTime = (dateString?: string) => {
 const BASE_TABS = ["전체", "공지사항", "자유게시판", "합주 일정", "합주", "멤버"];
 
 export default function BandIdDynamicBoardPage() {
+  const { confirm } = useConfirm();
   const { id } = useParams() as { id: string };
   const router = useRouter();
+  const searchParams = useSearchParams();
   const navigate = (path: string) => router.push(path);
+  const { openUserProfile } = useUserProfile();
   const { openMenu } = useContext(LayoutContext);
-  const [activeTab, setActiveTab] = useState("전체");
+  
+  // URL에 tab 파라미터가 있으면 해당 탭을 기본으로 선택
+  const defaultTab = searchParams.get('tab') || "전체";
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [postToEdit, setPostToEdit] = useState<BandPostData | null>(null);
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -96,7 +106,7 @@ export default function BandIdDynamicBoardPage() {
       if (userId !== null && !profile.isLeader) {
         const isMember = profile.positions?.some((p: any) => p.userId === userId);
         if (!isMember) {
-          alert("해당 밴드의 멤버만 게시판에 접근할 수 있습니다.");
+          toast.error("해당 밴드의 멤버만 게시판에 접근할 수 있습니다.");
           router.push('/bands');
           return;
         }
@@ -159,11 +169,11 @@ export default function BandIdDynamicBoardPage() {
   const handleAcceptApp = async (appId: number) => {
     try {
       await acceptApplicationApi(appId);
-      alert("수락 완료");
+      toast.success("수락 완료");
       loadBandApplications();
       fetchBandData(currentUserId);
     } catch (err: any) {
-      alert(err.response?.data?.message || "오류가 발생했습니다.");
+      toast.error(err.response?.data?.message || "오류가 발생했습니다.");
     }
   };
 
@@ -182,19 +192,19 @@ export default function BandIdDynamicBoardPage() {
         setRejectModalTarget(null);
         setRejectReason("");
       } catch (err: any) {
-        alert(err.response?.data?.message || "거절 처리 실패");
+        toast.error(err.response?.data?.message || "거절 처리 실패");
       }
     }
   };
 
   const handleLeaveBand = async () => {
-    if (confirm("정말 밴드에서 탈퇴하시겠습니까? 탈퇴 후에는 게시판을 볼 수 없습니다.")) {
+    if (await confirm({ message: "정말 밴드에서 탈퇴하시겠습니까? 탈퇴 후에는 게시판을 볼 수 없습니다.", isDestructive: true })) {
       try {
         await leaveBandApi(id);
-        alert("성공적으로 탈퇴되었습니다.");
+        toast.success("성공적으로 탈퇴되었습니다.");
         navigate('/bands');
       } catch (err: any) {
-        alert(err.response?.data?.message || "탈퇴에 실패했습니다.");
+        toast.error(err.response?.data?.message || "탈퇴에 실패했습니다.");
       }
     }
   };
@@ -216,11 +226,11 @@ export default function BandIdDynamicBoardPage() {
         }))
       };
       await updateBandProfileApi(id, payload);
-      alert("밴드 프로필이 변경되었습니다! 🎸");
+      toast.success("밴드 프로필이 변경되었습니다! 🎸");
       fetchBandData(currentUserId);
     } catch (error) {
       console.error("Failed to update profile:", error);
-      alert("프로필 수정 권한이 없거나 저장에 실패했습니다.");
+      toast.error("프로필 수정 권한이 없거나 저장에 실패했습니다.");
     }
   };
 
@@ -257,7 +267,7 @@ export default function BandIdDynamicBoardPage() {
           scheduleDate,
           poll: postData.poll
         });
-        alert("게시글이 성공적으로 수정되었습니다! 📝");
+        toast.success("게시글이 성공적으로 수정되었습니다! 📝");
       } else {
         const newPost = await createBandPostApi(id, {
           boardType,
@@ -283,19 +293,19 @@ export default function BandIdDynamicBoardPage() {
       fetchPostsData();
     } catch (error) {
       console.error("Failed to create/update post:", error);
-      alert("게시글 저장 실패");
+      toast.error("게시글 저장 실패");
     }
   };
 
   const handleDeletePost = async (postId: number | string) => {
-    if (!confirm("정말 이 게시글을 삭제하시겠습니까?")) return;
+    if (!await confirm({ message: "정말 이 게시글을 삭제하시겠습니까?", isDestructive: true })) return;
     try {
       await deleteBandPostApi(id, postId);
-      alert("게시글이 삭제되었습니다.");
+      toast.success("게시글이 삭제되었습니다.");
       fetchPostsData();
     } catch (error) {
       console.error("Failed to delete post:", error);
-      alert("게시글 삭제 실패");
+      toast.error("게시글 삭제 실패");
     }
   };
 
@@ -394,7 +404,10 @@ export default function BandIdDynamicBoardPage() {
                 {bandProfile.positions && bandProfile.positions.filter(p => !p.isRecruiting).length > 0 ? (
                   bandProfile.positions.filter(p => !p.isRecruiting).map((member, index) => (
                     <div key={member.id} className="bg-secondary/40 border border-border rounded-2xl p-5 flex items-center gap-4 hover:border-primary/30 transition-colors">
-                      <div className="relative shrink-0">
+                      <div 
+                        className="relative shrink-0 cursor-pointer"
+                        onClick={() => member.userId && openUserProfile(member.userId, member.memberName, member.profileImageUrl)}
+                      >
                         {member.profileImageUrl ? (
                           <img src={member.profileImageUrl} alt={member.memberName} className="w-14 h-14 rounded-full object-cover border-2 border-border" />
                         ) : (
@@ -535,7 +548,10 @@ export default function BandIdDynamicBoardPage() {
                 {bandApplications.map(app => (
                   <div key={app.id} className="bg-secondary/40 border border-border rounded-2xl p-5 text-left flex flex-col">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="w-12 h-12 bg-slate-800 rounded-full overflow-hidden shrink-0">
+                      <div 
+                        className="w-12 h-12 bg-slate-800 rounded-full overflow-hidden shrink-0 cursor-pointer"
+                        onClick={() => openUserProfile(app.applicantUserId, app.applicantName, app.applicantProfileImageUrl || undefined)}
+                      >
                         {app.applicantProfileImageUrl ? (
                           <img src={app.applicantProfileImageUrl} className="w-full h-full object-cover" />
                         ) : (
@@ -612,7 +628,7 @@ export default function BandIdDynamicBoardPage() {
                                   });
                                   setIsWriteModalOpen(true);
                                 } catch (err) {
-                                  alert("게시글 정보를 불러오는 데 실패했습니다.");
+                                  toast.error("게시글 정보를 불러오는 데 실패했습니다.");
                                 }
                               }}
                               className="text-slate-600 hover:text-primary transition-colors p-1"
@@ -707,7 +723,7 @@ export default function BandIdDynamicBoardPage() {
                                   });
                                   setIsWriteModalOpen(true);
                                 } catch (err) {
-                                  alert("게시글 정보를 불러오는 데 실패했습니다.");
+                                  toast.error("게시글 정보를 불러오는 데 실패했습니다.");
                                 }
                               }}
                               className="text-slate-600 hover:text-primary transition-colors p-1"
@@ -802,7 +818,7 @@ export default function BandIdDynamicBoardPage() {
                                   });
                                   setIsWriteModalOpen(true);
                                 } catch (err) {
-                                  alert("게시글 정보를 불러오는 데 실패했습니다.");
+                                  toast.error("게시글 정보를 불러오는 데 실패했습니다.");
                                 }
                               }}
                               className="text-slate-600 hover:text-primary transition-colors p-1"

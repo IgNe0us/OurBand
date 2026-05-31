@@ -49,6 +49,8 @@ public class BandService {
     private final BandPollVoteRepository bandPollVoteRepository;
     private final BandApplicationRepository bandApplicationRepository;
     private final BandFollowRepository bandFollowRepository;
+    private final LikeViewCacheService likeViewCacheService;
+    private final NotificationService notificationService;
 
     /**
      * 밴드 상세 정보 및 포지션 멤버 조회
@@ -298,7 +300,7 @@ public class BandService {
                     .scheduleDate(post.getScheduleDate())
                     .scheduleDetails(post.getScheduleDetails())
                     .createdAt(post.getCreatedAt())
-                    .likeCount(post.getLikeCount())
+                    .likeCount(likeViewCacheService.getCachedLikeCount("band", post.getId(), post.getLikeCount()))
                     .commentCount(post.getCommentCount())
                     .poll(pollResponse)
                     .build());
@@ -349,7 +351,8 @@ public class BandService {
         
         boolean isLikedByCurrentUser = false;
         if (currentUserId != null) {
-            isLikedByCurrentUser = bandPostLikeRepository.existsByPostIdAndUserId(postId, currentUserId);
+            isLikedByCurrentUser = likeViewCacheService.isLiked("band", postId, currentUserId,
+                    bandPostLikeRepository.existsByPostIdAndUserId(postId, currentUserId));
         }
         
         List<com.ourband.api.domain.model.BandPostComment> topLevelComments = bandPostCommentRepository.findByPostIdAndParentIdIsNullOrderByCreatedAtAsc(postId);
@@ -411,7 +414,7 @@ public class BandService {
                 .scheduleDate(post.getScheduleDate())
                 .scheduleDetails(post.getScheduleDetails())
                 .createdAt(post.getCreatedAt())
-                .likeCount(post.getLikeCount())
+                .likeCount(likeViewCacheService.getCachedLikeCount("band", post.getId(), post.getLikeCount()))
                 .commentCount(post.getCommentCount())
                 .isLikedByCurrentUser(isLikedByCurrentUser)
                 .comments(comments)
@@ -634,19 +637,23 @@ public class BandService {
         BandPost post = bandPostRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 게시글입니다."));
         
-        boolean isLiked = bandPostLikeRepository.existsByPostIdAndUserId(postId, currentUserId);
-        if (isLiked) {
-            bandPostLikeRepository.deleteByPostIdAndUserId(postId, currentUserId);
-            post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
-            return false;
-        } else {
-            bandPostLikeRepository.save(com.ourband.api.domain.model.BandPostLike.builder()
-                    .postId(postId)
-                    .userId(currentUserId)
-                    .build());
-            post.setLikeCount(post.getLikeCount() + 1);
-            return true;
+        boolean currentDbStatus = bandPostLikeRepository.existsByPostIdAndUserId(postId, currentUserId);
+        
+        boolean isNowLiked = likeViewCacheService.toggleLike("band", postId, currentUserId, currentDbStatus);
+        
+        if (isNowLiked && !post.getAuthorId().equals(currentUserId)) {
+            User liker = userRepository.findById(currentUserId).orElse(null);
+            String likerName = liker != null ? liker.getNickname() : "누군가";
+            notificationService.send(
+                    post.getAuthorId(),
+                    currentUserId,
+                    com.ourband.api.domain.model.NotificationType.POST_LIKE,
+                    postId.toString(),
+                    likerName + "님이 회원님의 밴드 게시글에 좋아요를 눌렀습니다."
+            );
         }
+        
+        return isNowLiked;
     }
 
     /**
@@ -676,6 +683,18 @@ public class BandService {
         com.ourband.api.domain.model.BandPostComment saved = bandPostCommentRepository.save(comment);
         
         post.setCommentCount(post.getCommentCount() + 1);
+
+        if (!post.getAuthorId().equals(currentUserId)) {
+            User commenter = userRepository.findById(currentUserId).orElse(null);
+            String commenterName = commenter != null ? commenter.getNickname() : "누군가";
+            notificationService.send(
+                    post.getAuthorId(),
+                    currentUserId,
+                    com.ourband.api.domain.model.NotificationType.POST_COMMENT,
+                    postId.toString(),
+                    commenterName + "님이 회원님의 밴드 게시글에 댓글을 달았습니다."
+            );
+        }
 
         return mapCommentToDTO(saved);
     }
@@ -811,7 +830,29 @@ public class BandService {
                 .status("PENDING")
                 .build();
                 
-        return mapToAppResponse(bandApplicationRepository.save(app));
+        com.ourband.api.domain.model.BandApplication savedApp = bandApplicationRepository.save(app);
+
+        // 밴드 리더(최저 ID 멤버)에게 알림 발송
+        List<BandMember> members = bandMemberRepository.findByBandId(bandId);
+        if (!members.isEmpty()) {
+            BandMember leader = members.stream()
+                    .filter(m -> m.getUserId() != null)
+                    .min(java.util.Comparator.comparing(BandMember::getId))
+                    .orElse(null);
+            if (leader != null && leader.getUserId() != null) {
+                Bands band = bandRepository.findById(bandId).orElse(null);
+                String bandName = band != null ? band.getName() : "우리 밴드";
+                notificationService.send(
+                        leader.getUserId(),
+                        currentUserId,
+                        com.ourband.api.domain.model.NotificationType.BAND_APPLY,
+                        bandId.toString(),
+                        bandName + "에 새로운 가입 신청이 도착했습니다."
+                );
+            }
+        }
+                
+        return mapToAppResponse(savedApp);
     }
 
     @Transactional(readOnly = true)
@@ -847,9 +888,10 @@ public class BandService {
         // 방장 권한 확인
         List<BandMember> members = bandMemberRepository.findByBandId(app.getBandId());
         BandMember leader = members.stream()
+                .filter(m -> m.getUserId() != null)
                 .min(java.util.Comparator.comparing(BandMember::getId))
-                .orElse(members.get(0));
-        if (leader.getUserId() == null || !leader.getUserId().equals(currentUserId)) {
+                .orElse(null);
+        if (leader == null || !leader.getUserId().equals(currentUserId)) {
             throw new IllegalArgumentException("권한이 없습니다.");
         }
         
@@ -871,6 +913,17 @@ public class BandService {
                 .status("JOINED")
                 .build();
         bandMemberRepository.save(updatedSlot);
+
+        // 지원자에게 가입 수락 알림 발송
+        Bands band = bandRepository.findById(app.getBandId()).orElse(null);
+        String bandName = band != null ? band.getName() : "우리 밴드";
+        notificationService.send(
+                app.getApplicantUserId(),
+                currentUserId,
+                com.ourband.api.domain.model.NotificationType.INFO,
+                app.getBandId().toString(),
+                bandName + "에 가입 되었습니다."
+        );
     }
 
     @Transactional
@@ -881,13 +934,25 @@ public class BandService {
         // 방장 권한 확인
         List<BandMember> members = bandMemberRepository.findByBandId(app.getBandId());
         BandMember leader = members.stream()
+                .filter(m -> m.getUserId() != null)
                 .min(java.util.Comparator.comparing(BandMember::getId))
-                .orElse(members.get(0));
-        if (leader.getUserId() == null || !leader.getUserId().equals(currentUserId)) {
+                .orElse(null);
+        if (leader == null || !leader.getUserId().equals(currentUserId)) {
             throw new IllegalArgumentException("권한이 없습니다.");
         }
         
         app.reject(reason);
+
+        // 지원자에게 가입 거절 알림 발송
+        Bands band = bandRepository.findById(app.getBandId()).orElse(null);
+        String bandName = band != null ? band.getName() : "우리 밴드";
+        notificationService.send(
+                app.getApplicantUserId(),
+                currentUserId,
+                com.ourband.api.domain.model.NotificationType.INFO,
+                app.getBandId().toString(),
+                bandName + "에 가입되지 못했습니다."
+        );
     }
 
     private BandApplicationResponseDTO mapToAppResponse(com.ourband.api.domain.model.BandApplication app) {
@@ -1041,6 +1106,21 @@ public class BandService {
 
         me.leave();
         bandMemberRepository.save(me);
+
+        User leaver = userRepository.findById(currentUserId).orElse(null);
+        String leaverName = leaver != null ? leaver.getNickname() : "누군가";
+        
+        members.stream()
+                .filter(m -> m.getUserId() != null && !m.getUserId().equals(currentUserId))
+                .forEach(m -> {
+                    notificationService.send(
+                            m.getUserId(),
+                            currentUserId,
+                            com.ourband.api.domain.model.NotificationType.INFO,
+                            bandId.toString(),
+                            leaverName + "님이 밴드를 탈퇴했습니다."
+                    );
+                });
     }
 
     @Transactional

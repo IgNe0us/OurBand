@@ -5,9 +5,11 @@ import { ArrowLeft, MessageSquare, ThumbsUp, User, Share2, AlertCircle, CheckCir
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { ReportModal } from '@/components/common/ReportModal';
-import { UserProfileModal } from '@/components/common/UserProfileModal';
+import { useUserProfile } from '@/store/userProfileContext';
 import { getUserInfoApi } from '@/api/account/userService';
 import { CommunityWritePostModal } from '@/components/post/CommunityWritePostModal';
+import toast from "react-hot-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type PollOption = {
   id: string;
@@ -33,6 +35,7 @@ type PostData = {
 };
 
 export default function CommunityPostDetailPage() {
+  const { confirm } = useConfirm();
   const router = useRouter();
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -45,7 +48,7 @@ export default function CommunityPostDetailPage() {
   const [commentText, setCommentText] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState<boolean>(false);
-  const [selectedUser, setSelectedUser] = useState<{ id: string | number; name: string; image?: string } | null>(null);
+  const { openUserProfile } = useUserProfile();
   const [poll, setPoll] = useState<PollData | undefined>(undefined);
 
   // 대댓글/수정/삭제 상태
@@ -156,7 +159,7 @@ export default function CommunityPostDetailPage() {
       });
     } catch (e) {
       console.error("Vote failed", e);
-      alert("투표 처리 중 오류가 발생했습니다.");
+      toast.error("투표 처리 중 오류가 발생했습니다.");
     }
   };
   
@@ -190,18 +193,18 @@ export default function CommunityPostDetailPage() {
       window.location.reload();
     } catch (e) {
       console.error("Failed to update post", e);
-      alert("게시글 수정에 실패했습니다.");
+      toast.error("게시글 수정에 실패했습니다.");
     }
   };
 
   const handleDeletePost = async () => {
-    if (!confirm("게시글을 삭제하시겠습니까?")) return;
+    if (!await confirm({ message: "게시글을 삭제하시겠습니까?", isDestructive: true })) return;
     try {
       await deleteCommunityPostApi(id);
       router.push(`/community/free`);
     } catch (e) {
       console.error("Failed to delete post", e);
-      alert("게시글 삭제에 실패했습니다.");
+      toast.error("게시글 삭제에 실패했습니다.");
     }
   };
 
@@ -235,7 +238,7 @@ export default function CommunityPostDetailPage() {
       setCommentText("");
     } catch (e) {
       console.error("Failed to add comment", e);
-      alert("댓글 작성에 실패했습니다.");
+      toast.error("댓글 작성에 실패했습니다.");
     } finally {
       setIsSubmittingComment(false);
     }
@@ -270,7 +273,7 @@ export default function CommunityPostDetailPage() {
       setReplyText("");
     } catch (e) {
       console.error("Failed to add reply", e);
-      alert("답글 작성에 실패했습니다.");
+      toast.error("답글 작성에 실패했습니다.");
     }
   };
 
@@ -298,13 +301,13 @@ export default function CommunityPostDetailPage() {
       setEditText("");
     } catch (e) {
       console.error("Failed to edit comment", e);
-      alert("댓글 수정에 실패했습니다.");
+      toast.error("댓글 수정에 실패했습니다.");
     }
   };
 
   // 댓글 삭제
   const handleDeleteComment = async (commentId: number) => {
-    if (!confirm("댓글을 삭제하시겠습니까?") || !post) return;
+    if (!await confirm({ message: "댓글을 삭제하시겠습니까?", isDestructive: true }) || !post) return;
     try {
       await deleteCommunityCommentApi(id, commentId);
       // 댓글 목록에서 제거 (대댓글 수 포함 차감)
@@ -328,20 +331,21 @@ export default function CommunityPostDetailPage() {
       });
     } catch (e) {
       console.error("Failed to delete comment", e);
-      alert("댓글 삭제에 실패했습니다.");
+      toast.error("댓글 삭제에 실패했습니다.");
     }
   };
 
-  const CommentItem = ({ c, depth = 0 }: { c: any; depth?: number }) => {
+  // 댓글 렌더링 함수 (React 컴포넌트가 아닌 일반 함수로 분리하여 한글 입력 끊김 방지)
+  const renderComment = (c: any, depth = 0) => {
     const isEditing = editingComment === c.id;
     const isReplying = replyingTo === c.id;
     const isAuthor = currentUserId === c.userId;
 
     return (
-      <div className={cn("flex gap-3", depth > 0 && "ml-8 pl-4 border-l-2 border-border/40")}>
+      <div key={c.id} className={cn("flex gap-3", depth > 0 && "ml-8 pl-4 border-l-2 border-border/40")}>
         <div
           className="w-8 h-8 rounded-full bg-slate-800 border border-border shrink-0 cursor-pointer hover:border-primary transition-colors overflow-hidden mt-0.5"
-          onClick={() => setSelectedUser({ id: c.userId, name: c.authorName, image: c.authorProfileImageUrl })}
+          onClick={() => openUserProfile(Number(c.userId), c.authorName, c.authorProfileImageUrl)}
         >
           {c.authorProfileImageUrl ? (
             <img src={c.authorProfileImageUrl} alt={c.authorName} className="w-full h-full object-cover" />
@@ -354,7 +358,7 @@ export default function CommunityPostDetailPage() {
           <div className="flex justify-between items-center">
             <div
               className="flex items-center gap-2 cursor-pointer group"
-              onClick={() => setSelectedUser({ id: c.userId, name: c.authorName, image: c.authorProfileImageUrl })}
+              onClick={() => openUserProfile(Number(c.userId), c.authorName, c.authorProfileImageUrl)}
             >
               <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">{c.authorName}</span>
               <span className="text-[10px] text-slate-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
@@ -441,9 +445,7 @@ export default function CommunityPostDetailPage() {
           {/* 대댓글 목록 */}
           {c.replies && c.replies.length > 0 && (
             <div className="mt-4 space-y-4">
-              {c.replies.map((reply: any) => (
-                <CommentItem key={reply.id} c={reply} depth={depth + 1} />
-              ))}
+              {c.replies.map((reply: any) => renderComment(reply, depth + 1))}
             </div>
           )}
         </div>
@@ -485,7 +487,7 @@ export default function CommunityPostDetailPage() {
         <div className="flex justify-between items-center pb-6 border-b border-border/50 mb-8">
           <div 
             className="flex items-center gap-3 cursor-pointer group"
-            onClick={() => setSelectedUser({ id: post.userId || post.author, name: post.author })}
+            onClick={() => openUserProfile(Number(post.userId || post.author), post.author, post.authorProfileImageUrl)}
           >
             <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-background overflow-hidden p-0.5 shadow-sm group-hover:border-primary/50 transition-colors">
               <div className="w-full h-full bg-secondary rounded-full flex items-center justify-center overflow-hidden">
@@ -600,9 +602,7 @@ export default function CommunityPostDetailPage() {
 
         <div className="space-y-6">
           {post.commentsList && post.commentsList.length > 0 ? (
-            post.commentsList.map((c: any) => (
-              <CommentItem key={c.id} c={c} depth={0} />
-            ))
+            post.commentsList.map((c: any) => renderComment(c, 0))
           ) : (
             <div className="text-center py-8 text-slate-500 text-sm">
               등록된 댓글이 없습니다. 가장 먼저 댓글을 남겨보세요!
@@ -639,13 +639,7 @@ export default function CommunityPostDetailPage() {
       
       <ReportModal isOpen={reportModalOpen} onClose={() => setReportModalOpen(false)} targetName="게시글" />
       
-      <UserProfileModal 
-        isOpen={!!selectedUser}
-        onClose={() => setSelectedUser(null)}
-        userId={selectedUser?.id}
-        userName={selectedUser?.name}
-        userImage={selectedUser?.image}
-      />
+
 
       <CommunityWritePostModal 
         isOpen={isEditModalOpen}

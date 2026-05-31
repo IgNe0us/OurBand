@@ -33,6 +33,8 @@ public class RecruitmentService {
     private final ProfileRepository profileRepository;
     private final BandRepository bandRepository;
     private final BandMemberRepository bandMemberRepository;
+    private final NotificationService notificationService;
+    private final com.ourband.api.domain.service.chat.ChatService chatService;
 
     @Transactional
     public MemberSeekingPostResponseDTO createSeekingPost(Long userId, MemberSeekingPostCreateRequestDTO request) {
@@ -89,6 +91,10 @@ public class RecruitmentService {
 
     @Transactional
     public RecruitmentOfferResponseDTO sendOffer(Long senderUserId, RecruitmentOfferRequestDTO request) {
+        if (bandMemberRepository.existsByBandIdAndUserIdAndStatus(request.getBandId(), request.getTargetUserId(), "JOINED")) {
+            throw new IllegalArgumentException("이미 해당 밴드에 가입되어 있는 유저입니다.");
+        }
+        
         if (offerRepository.existsByTargetUserIdAndSeekingPostIdAndStatus(request.getTargetUserId(), request.getSeekingPostId(), "PENDING")) {
             throw new IllegalArgumentException("이미 대기 중인 제안이 있습니다.");
         }
@@ -101,7 +107,24 @@ public class RecruitmentService {
                 .message(request.getMessage())
                 .status("PENDING")
                 .build();
-        return mapToOfferResponse(offerRepository.save(offer));
+        RecruitmentOffer savedOffer = offerRepository.save(offer);
+
+        // 1:1 채팅방 생성 (이미 존재하면 기존 방 반환)
+        Long roomId = chatService.getOrCreateRoom(senderUserId, request.getTargetUserId());
+
+        Bands band = bandRepository.findById(request.getBandId()).orElse(null);
+        String bandName = band != null ? band.getName() : "알 수 없는 밴드";
+
+        // 알림 발송
+        notificationService.send(
+                request.getTargetUserId(),
+                senderUserId,
+                com.ourband.api.domain.model.NotificationType.RECRUIT_OFFER,
+                roomId.toString() + "?type=offer&targetId=" + savedOffer.getId(),
+                bandName + "에서 영입 제안이 왔습니다."
+        );
+
+        return mapToOfferResponse(savedOffer);
     }
 
     @Transactional(readOnly = true)
@@ -120,13 +143,44 @@ public class RecruitmentService {
         }
         offer.accept();
         
-        BandMember newMember = BandMember.builder()
-                .bandId(offer.getBandId())
-                .userId(userId)
-                .role(offer.getPosition())
-                .status("JOINED")
-                .build();
-        bandMemberRepository.save(newMember);
+        // 해당 밴드에 동일한 포지션(role)으로 비어있는(userId가 null인) 슬롯이 있는지 확인
+        List<com.ourband.api.domain.model.BandMember> emptySlots = bandMemberRepository.findByBandId(offer.getBandId()).stream()
+                .filter(m -> m.getUserId() == null && m.getRole().equals(offer.getPosition()))
+                .collect(Collectors.toList());
+
+        if (!emptySlots.isEmpty()) {
+            com.ourband.api.domain.model.BandMember slot = emptySlots.get(0);
+            com.ourband.api.domain.model.BandMember updatedSlot = com.ourband.api.domain.model.BandMember.builder()
+                    .id(slot.getId())
+                    .bandId(slot.getBandId())
+                    .userId(userId)
+                    .role(slot.getRole())
+                    .status("JOINED")
+                    .build();
+            bandMemberRepository.save(updatedSlot);
+        } else {
+            com.ourband.api.domain.model.BandMember newMember = com.ourband.api.domain.model.BandMember.builder()
+                    .bandId(offer.getBandId())
+                    .userId(userId)
+                    .role(offer.getPosition())
+                    .status("JOINED")
+                    .build();
+            bandMemberRepository.save(newMember);
+        }
+
+        // 제안자(방장)에게 알림 발송
+        User targetUser = userRepository.findById(userId).orElse(null);
+        String targetName = targetUser != null ? targetUser.getNickname() : "알 수 없음";
+        Bands band = bandRepository.findById(offer.getBandId()).orElse(null);
+        String bandName = band != null ? band.getName() : "우리 밴드";
+        
+        notificationService.send(
+                offer.getSenderUserId(),
+                userId,
+                com.ourband.api.domain.model.NotificationType.INFO, // General info notification
+                offer.getBandId().toString(),
+                targetName + "님이 " + offer.getPosition() + " 포지션으로 " + bandName + "에 가입 되었습니다."
+        );
     }
 
     @Transactional
@@ -137,6 +191,18 @@ public class RecruitmentService {
             throw new IllegalArgumentException("권한이 없습니다.");
         }
         offer.reject();
+
+        // 제안자(방장)에게 알림 발송
+        User targetUser = userRepository.findById(userId).orElse(null);
+        String targetName = targetUser != null ? targetUser.getNickname() : "알 수 없음";
+        
+        notificationService.send(
+                offer.getSenderUserId(),
+                userId,
+                com.ourband.api.domain.model.NotificationType.INFO,
+                offer.getBandId().toString(),
+                targetName + "님이 영입 제안을 거절하였습니다."
+        );
     }
 
     private MemberSeekingPostResponseDTO mapToSeekingPostResponse(MemberSeekingPost post) {

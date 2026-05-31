@@ -2,13 +2,17 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { MessageSquare, Users, ChevronRight, User, Search, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getUserInfoApi, getFollowingsApi } from "@/api/account/userService";
 import { getMyBandsApi, getBandProfileApi } from "@/api/band/bandService";
 import { getMyChatRoomsApi, createOrGetRoomApi, ChatRoomResponseDTO } from "@/api/chat/chatService";
+import { useChatStore } from "@/store/chatStore";
+import toast from "react-hot-toast";
 
 export default function ChatMainPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"LIST" | "NEW">("LIST");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -16,6 +20,8 @@ export default function ChatMainPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [mergedUsers, setMergedUsers] = useState<any[]>([]);
   const [chatRooms, setChatRooms] = useState<ChatRoomResponseDTO[]>([]);
+  const lastMessageTick = useChatStore(state => state.lastMessageTick);
+  const latestMessage = useChatStore(state => state.latestMessage);
 
   // 실데이터 로딩: 팔로잉 목록 + 가입된 밴드 멤버 합치기
   useEffect(() => {
@@ -72,7 +78,7 @@ export default function ChatMainPage() {
         setMergedUsers(Array.from(usersMap.values()));
 
         // 3. 내 채팅방 목록 가져오기
-        const rooms = await getMyChatRoomsApi().catch(() => []);
+        let rooms = await getMyChatRoomsApi().catch(() => []);
         setChatRooms(rooms);
       } catch (err) {
         console.error("Failed to load users or chat rooms", err);
@@ -82,6 +88,14 @@ export default function ChatMainPage() {
     };
     fetchData();
   }, []);
+
+  // 새 메시지가 오면 DB를 다시 조회 (이제 백엔드에서 Redis 큐를 알아서 병합해주므로 정상 동작함)
+  useEffect(() => {
+    if (!currentUserId) return;
+    getMyChatRoomsApi()
+      .then(rooms => setChatRooms(rooms))
+      .catch(err => console.error(err));
+  }, [lastMessageTick, currentUserId]);
 
   // 검색 필터링 로직
   const filteredUsers = useMemo(() => {
@@ -201,9 +215,9 @@ export default function ChatMainPage() {
                     onClick={async () => {
                       try {
                         const roomId = await createOrGetRoomApi(user.id);
-                        window.location.href = `/chat/${roomId}`;
+                        router.push(`/chat/${roomId}`);
                       } catch (err) {
-                        alert("채팅방을 생성할 수 없습니다.");
+                        toast.error("채팅방을 생성할 수 없습니다.");
                       }
                     }}
                     key={user.id} 

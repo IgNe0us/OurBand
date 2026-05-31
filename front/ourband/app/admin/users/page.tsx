@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Search, Building, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUserProfile } from "@/store/userProfileContext";
 
 const MOCK_USERS = [
   { id: "1", username: "드럼머신", email: "drum@example.com", joined: "2023-11-20", status: "active", reports: 0, role: "user", lastIp: "192.168.1.1" },
@@ -23,6 +24,7 @@ export default function AdminUsersPage() {
   const [businessApps, setBusinessApps] = useState(MOCK_BUSINESS_APPS);
   const [searchQuery, setSearchQuery] = useState("");
   const [userFilter, setUserFilter] = useState("all");
+  const { openUserProfile } = useUserProfile();
 
   const handleToggleUserStatus = (id: string) => {
     setUsers(users.map(u => u.id === id ? { ...u, status: u.status === "active" ? "banned" : "active" } : u));
@@ -113,7 +115,12 @@ export default function AdminUsersPage() {
                   <tr key={user.id} className="border-b border-border/50 hover:bg-white/5 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0"><img src={`https://picsum.photos/seed/${user.id}/100/100`} className="rounded-full w-full h-full" alt={user.username} /></div>
+                        <div 
+                          className="w-8 h-8 rounded-full bg-slate-800 shrink-0 cursor-pointer flex items-center justify-center overflow-hidden"
+                          onClick={() => openUserProfile(Number(user.id), user.username, "")}
+                        >
+                          <User size={16} className="text-slate-500" />
+                        </div>
                         <div>
                           <div className="font-bold text-white">{user.username}</div>
                           <div className="text-xs text-slate-500">{user.email}</div>

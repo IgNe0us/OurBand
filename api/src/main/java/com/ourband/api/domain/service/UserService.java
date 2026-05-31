@@ -32,6 +32,7 @@ import com.ourband.api.domain.repository.BandMemberRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,6 +59,9 @@ public class UserService {
     private final com.ourband.api.domain.repository.BandRepository bandRepository;
 
     private final R2StorageService r2StorageService; // 💡 주입 추가
+    private final StringRedisTemplate stringRedisTemplate;
+    private final LikeViewCacheService likeViewCacheService;
+    private final NotificationService notificationService;
 
     @Transactional
     public User registerUser(UserRequestDTO requestDTO) {
@@ -86,6 +90,7 @@ public class UserService {
         Profile newProfile = Profile.builder()
                 .user(savedUser) // 외래키 연결
                 .instrument(requestDTO.getInstrument()) // 주 포지션 저장
+                .location(requestDTO.getLocation())
                 // bio, experienceLevel 등은 가입 시점이므로 null 처리됨
                 .build();
 
@@ -132,6 +137,21 @@ public class UserService {
         return user;
     }
 
+    // 토큰 재발급
+    public User refreshUserToken(String refreshToken) {
+        String userIdStr = stringRedisTemplate.opsForValue().get("refresh_token_id:" + refreshToken);
+        if (userIdStr == null) {
+            throw new IllegalArgumentException("만료되거나 유효하지 않은 리프레시 토큰입니다.");
+        }
+        
+        // 기존 리프레시 토큰 폐기 (새로 발급할 것이므로)
+        stringRedisTemplate.delete("refresh_token_id:" + refreshToken);
+
+        Long userId = Long.parseLong(userIdStr);
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+    }
+
     // 유저 프로필 조회 완벽 채우기
     @Transactional(readOnly = true)
     public UserProfileResponseDTO getUserFullProfile(Long loginUserId, Long targetUserId) {
@@ -163,7 +183,8 @@ public class UserService {
                     String firstMediaUrl = h.getMediaList().isEmpty() ? null : h.getMediaList().get(0).getMediaUrl();
                     String firstMediaType = h.getMediaList().isEmpty() ? null : h.getMediaList().get(0).getMediaType();
 
-                    boolean likedByMe = historyLikeRepository.findByHistoryIdAndUserId(h.getId(), loginUserId).isPresent();
+                    boolean likedByMe = likeViewCacheService.isLiked("history", h.getId(), loginUserId, 
+                        historyLikeRepository.findByHistoryIdAndUserId(h.getId(), loginUserId).isPresent());
 
                     return new HistoryResponse(
                             h.getId(), 
@@ -171,8 +192,8 @@ public class UserService {
                             h.getContent(), 
                             firstMediaUrl, 
                             firstMediaType,
-                            h.getViewCount(),
-                            h.getLikeCount(),
+                            likeViewCacheService.getCachedViewCount("history", h.getId(), h.getViewCount()),
+                            likeViewCacheService.getCachedLikeCount("history", h.getId(), h.getLikeCount()),
                             h.getCommentCount(),
                             h.getShareCount(),
                             likedByMe,
@@ -185,6 +206,13 @@ public class UserService {
         // [소속 밴드 목록] 한방 JPQL 쿼리로 DTO 리스트 즉시 가져오기
         List<BandSimpleDTO> bands = bandMemberRepository.findBandDetailsByUserId(targetUserId);
         int bandCount = bands.size(); // 소속된 밴드 개수 집계
+
+        // 💡 로그인 유저와의 팔로우 관계 확인 (Redis 고속 캐시)
+        boolean isFollowing = false;
+        if (loginUserId != null && !loginUserId.equals(targetUserId)) {
+            ensureFollowCacheLoaded(loginUserId);
+            isFollowing = Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember("following:" + loginUserId, targetUserId.toString()));
+        }
 
         // 3. 하나의 거대한 DTO로 조립하여 반환
         return UserProfileResponseDTO.builder()
@@ -204,6 +232,9 @@ public class UserService {
                 .followerCount(followerCount)
                 .followingCount(followingCount)
                 .bandCount(bandCount)
+                
+                // 로그인 유저와의 관계
+                .isFollowing(isFollowing)
                 
                 // 리스트 매핑
                 .favoriteMusics(musics)
@@ -360,29 +391,29 @@ public class UserService {
     }
 
 
-    // 1. 좋아요 토글 시스템 (진짜 DB 데이터 기반 제어)
+    // 1. 좋아요 토글 시스템 (Redis Write-Behind)
     @Transactional
     public int toggleLike(Long userId, Long historyId) {
         UserHistory history = userHistoryRepository.findById(historyId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 게시글입니다."));
 
-        Optional<HistoryLike> alreadyLike = historyLikeRepository.findByHistoryIdAndUserId(historyId, userId);
+        boolean currentDbStatus = historyLikeRepository.findByHistoryIdAndUserId(historyId, userId).isPresent();
 
-        if (alreadyLike.isPresent()) {
-            // 이미 좋아요를 누른 상태 -> 좋아요 취소
-            historyLikeRepository.delete(alreadyLike.get());
-            history.decreaseLikeCount(); // 엔티티 내에 likeCount-- 메서드 실행
-        } else {
-            // 좋아요를 누르지 않은 상태 -> 좋아요 생성
-            HistoryLike newLike = HistoryLike.builder()
-                    .historyId(historyId)
-                    .userId(userId)
-                    .build();
-            historyLikeRepository.save(newLike);
-            history.increaseLikeCount(); // 엔티티 내에 likeCount++ 메서드 실행
+        boolean isNowLiked = likeViewCacheService.toggleLike("history", historyId, userId, currentDbStatus);
+        
+        if (isNowLiked) {
+            User liker = userRepository.findById(userId).orElse(null);
+            String likerName = liker != null ? liker.getNickname() : "누군가";
+            notificationService.send(
+                    history.getUserId(),
+                    userId,
+                    com.ourband.api.domain.model.NotificationType.POST_LIKE,
+                    historyId.toString(),
+                    likerName + "님이 회원님의 마이페이지 게시글에 좋아요를 눌렀습니다."
+            );
         }
         
-        return history.getLikeCount(); // 변경된 최종 좋아요 수 반환
+        return likeViewCacheService.getCachedLikeCount("history", historyId, history.getLikeCount());
     }
 
     // 2. 댓글 작성
@@ -406,6 +437,14 @@ public class UserService {
 
         // 메인 게시글 댓글 카운트 증가
         history.increaseCommentCount(); 
+
+        notificationService.send(
+                history.getUserId(),
+                userId,
+                com.ourband.api.domain.model.NotificationType.POST_COMMENT,
+                historyId.toString(),
+                user.getNickname() + "님이 회원님의 마이페이지 게시글에 댓글을 달았습니다."
+        );
 
         return new HistoryCommentResponse(
                 savedComment.getId(),
@@ -451,6 +490,18 @@ public class UserService {
     // 💡 팔로워 / 팔로잉 목록 조회 기능
     // ========================================
 
+    private void ensureFollowCacheLoaded(Long userId) {
+        String followingKey = "following:" + userId;
+        if (Boolean.FALSE.equals(stringRedisTemplate.hasKey(followingKey))) {
+            List<com.ourband.api.domain.model.Follow> followings = followRepository.findByFollowerId(userId);
+            for(com.ourband.api.domain.model.Follow f : followings) {
+                stringRedisTemplate.opsForSet().add(followingKey, f.getFollowingId().toString());
+            }
+            stringRedisTemplate.opsForSet().add(followingKey, "-1"); // 캐시 미스 방지용 더미 데이터
+            stringRedisTemplate.expire(followingKey, 1, java.util.concurrent.TimeUnit.DAYS);
+        }
+    }
+
     /**
      * 나를 팔로우하는 사람 목록 (팔로워 리스트)
      * @param loginUserId 현재 로그인한 유저 ID (isFollowing 판별용)
@@ -461,6 +512,8 @@ public class UserService {
         // 나를 팔로우하는 사람들의 Follow 레코드 조회
         List<com.ourband.api.domain.model.Follow> followerRecords = followRepository.findByFollowingId(targetUserId);
 
+        ensureFollowCacheLoaded(loginUserId);
+
         return followerRecords.stream().map(follow -> {
             Long userId = follow.getFollowerId(); // 팔로우하는 사람의 ID
             User user = userRepository.findById(userId).orElse(null);
@@ -468,8 +521,8 @@ public class UserService {
 
             Profile profile = profileRepository.findByUser_UserId(userId).orElse(null);
 
-            // 내(loginUser)가 이 사람을 팔로우하고 있는지 확인
-            boolean isFollowing = followRepository.findByFollowerIdAndFollowingId(loginUserId, userId).isPresent();
+            // 내(loginUser)가 이 사람을 팔로우하고 있는지 확인 (Redis 고속 캐시)
+            boolean isFollowing = Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember("following:" + loginUserId, userId.toString()));
 
             return com.ourband.api.domain.dto.user.FollowUserDTO.builder()
                     .userId(user.getUserId())
@@ -492,6 +545,8 @@ public class UserService {
         // 내가 팔로우하는 사람들의 Follow 레코드 조회
         List<com.ourband.api.domain.model.Follow> followingRecords = followRepository.findByFollowerId(targetUserId);
 
+        ensureFollowCacheLoaded(loginUserId);
+
         return followingRecords.stream().map(follow -> {
             Long userId = follow.getFollowingId(); // 팔로우 대상의 ID
             User user = userRepository.findById(userId).orElse(null);
@@ -499,8 +554,8 @@ public class UserService {
 
             Profile profile = profileRepository.findByUser_UserId(userId).orElse(null);
 
-            // 내(loginUser)가 이 사람을 팔로우하고 있는지 확인
-            boolean isFollowing = followRepository.findByFollowerIdAndFollowingId(loginUserId, userId).isPresent();
+            // 내(loginUser)가 이 사람을 팔로우하고 있는지 확인 (Redis 고속 캐시)
+            boolean isFollowing = Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember("following:" + loginUserId, userId.toString()));
 
             return com.ourband.api.domain.dto.user.FollowUserDTO.builder()
                     .userId(user.getUserId())
@@ -538,22 +593,29 @@ public class UserService {
             throw new IllegalArgumentException("자기 자신을 팔로우할 수 없습니다.");
         }
 
-        Optional<com.ourband.api.domain.model.Follow> existing = followRepository.findByFollowerIdAndFollowingId(loginUserId, targetUserId);
-
-        if (existing.isPresent()) {
-            // 이미 팔로우 중 → 언팔로우
-            followRepository.delete(existing.get());
-            return false;
+        ensureFollowCacheLoaded(loginUserId);
+        
+        String followingKey = "following:" + loginUserId;
+        String syncKey = loginUserId + ":" + targetUserId;
+        
+        boolean isNowFollowing;
+        if (Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(followingKey, targetUserId.toString()))) {
+            // 이미 팔로우 중 → 언팔로우 (Write-Behind)
+            stringRedisTemplate.opsForSet().remove(followingKey, targetUserId.toString());
+            stringRedisTemplate.opsForSet().add("follow_sync_queue", syncKey);
+            stringRedisTemplate.opsForHash().put("follow_status_map", syncKey, "0");
+            isNowFollowing = false;
         } else {
-            // 팔로우하지 않은 상태 → 팔로우
-            com.ourband.api.domain.model.Follow newFollow = com.ourband.api.domain.model.Follow.builder()
-                    .followerId(loginUserId)
-                    .followingId(targetUserId)
-                    .build();
-            followRepository.save(newFollow);
-            return true;
+            // 팔로우하지 않은 상태 → 팔로우 (Write-Behind)
+            stringRedisTemplate.opsForSet().add(followingKey, targetUserId.toString());
+            stringRedisTemplate.opsForSet().add("follow_sync_queue", syncKey);
+            stringRedisTemplate.opsForHash().put("follow_status_map", syncKey, "1");
+            isNowFollowing = true;
         }
+        
+        return isNowFollowing;
     }
+
 
     // ========================================
     // 💡 밴드 창설 기능

@@ -9,6 +9,7 @@ import com.ourband.api.global.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -45,6 +46,28 @@ public class JamController {
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{jamId}")
+    public ResponseEntity<?> getJamPost(
+            @PathVariable("jamId") Long jamId,
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        try {
+            Long currentUserId = null;
+            if (accessToken != null) {
+                try {
+                    currentUserId = jwtUtil.getUserId(accessToken);
+                } catch (Exception ignored) {
+                }
+            }
+            JamPostResponseDTO response = jamService.getJamPost(jamId, currentUserId);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "서버 오류가 발생했습니다."));
         }
     }
 

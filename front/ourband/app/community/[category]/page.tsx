@@ -8,6 +8,8 @@ import { MessageCircle, HeartHandshake, PenTool, Search, MessageSquare, ThumbsUp
 import { useRouter, usePathname } from 'next/navigation';
 import { getUserInfoApi } from '@/api/account/userService';
 import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 const TABS = [
   { id: "free", label: "자유게시판", icon: MessageCircle, path: "/community/free" },
@@ -38,6 +40,7 @@ const getRelativeTime = (dateString?: string) => {
 };
 
 export default function CommunityCategoryPage() {
+  const { confirm } = useConfirm();
   const pathname = usePathname();
   const router = useRouter();
   const navigate = (path: string) => router.push(path);
@@ -111,7 +114,7 @@ export default function CommunityCategoryPage() {
         mediaType = data.files[0].type.startsWith("video/") ? "VIDEO" : "IMAGE";
       } catch (err) {
         console.error("Failed to upload file:", err);
-        alert("파일 업로드에 실패했습니다.");
+        toast.error("파일 업로드에 실패했습니다.");
         return;
       }
     }
@@ -154,18 +157,18 @@ export default function CommunityCategoryPage() {
       setEditingPost(null);
     } catch (e) {
       console.error("Failed to update post", e);
-      alert("게시글 수정에 실패했습니다.");
+      toast.error("게시글 수정에 실패했습니다.");
     }
   };
 
   const handleDeletePost = async (postId: number | string) => {
-    if (!confirm("게시글을 삭제하시겠습니까?")) return;
+    if (!await confirm({ message: "게시글을 삭제하시겠습니까?", isDestructive: true })) return;
     try {
       await deleteCommunityPostApi(postId);
       fetchPosts();
     } catch (e) {
       console.error("Failed to delete post", e);
-      alert("게시글 삭제에 실패했습니다.");
+      toast.error("게시글 삭제에 실패했습니다.");
     }
   };
 
@@ -283,7 +286,7 @@ export default function CommunityCategoryPage() {
                             });
                             setIsEditModalOpen(true);
                           } catch (err) {
-                            alert("게시글 정보를 불러오는 데 실패했습니다.");
+                            toast.error("게시글 정보를 불러오는 데 실패했습니다.");
                           }
                         }}
                         className="text-slate-500 hover:text-primary transition-colors p-1.5 rounded-md hover:bg-white/5"

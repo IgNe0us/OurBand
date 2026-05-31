@@ -15,7 +15,9 @@ import { Map, MapMarker, Polyline, useKakaoLoader } from "react-kakao-maps-sdk";
 
 
 
-import { getStudiosApi, type StudioData } from "@/api/studio/studioService";
+import { getStudiosApi, type StudioData, callEmergencySessionApi } from "@/api/studio/studioService";
+import toast from "react-hot-toast";
+import { KOREA_REGIONS } from "@/lib/regions";
 
 export interface ExtendedStudioData extends StudioData {
   isExternal?: boolean;
@@ -35,6 +37,14 @@ export default function StudioPage() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedExternal, setSelectedExternal] = useState<StudioData | null>(null);
+
+  const [sosPosition, setSosPosition] = useState("");
+  const [sosRegion, setSosRegion] = useState("");
+  const [sosSubRegion, setSosSubRegion] = useState("");
+  const [sosDetailAddress, setSosDetailAddress] = useState("");
+  const [sosDatetime, setSosDatetime] = useState("");
+  const [sosPay, setSosPay] = useState("");
+  const [sosDesc, setSosDesc] = useState("");
 
   const { openMenu } = useContext(LayoutContext);
 
@@ -490,10 +500,19 @@ export default function StudioPage() {
               </div>
               
               <form 
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
-                  alert("🚨 긴급 SOS가 발송되었습니다! 조건에 맞는 세션들에게 푸시 알림이 전송됩니다.");
-                  setIsSOSModalOpen(false);
+                  if (!sosRegion || !sosSubRegion) {
+                    toast.error("지역을 모두 선택해주세요.");
+                    return;
+                  }
+                  try {
+                    await callEmergencySessionApi(sosPosition, `${sosRegion} ${sosSubRegion}`, sosDetailAddress, sosDatetime);
+                    toast.success("🚨 긴급 SOS가 발송되었습니다! 조건에 맞는 세션들에게 푸시 알림이 전송됩니다.");
+                    setIsSOSModalOpen(false);
+                  } catch (error) {
+                    toast.error("SOS 발송 중 오류가 발생했습니다.");
+                  }
                 }} 
                 className="space-y-5"
               >
@@ -501,37 +520,72 @@ export default function StudioPage() {
                   <label className="text-xs font-bold text-slate-400">필요한 포지션</label>
                   <div className="relative">
                     <Music2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <select defaultValue="" className="w-full bg-background border border-border rounded-xl py-3 pl-11 pr-4 text-sm text-white appearance-none focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none cursor-pointer" required>
+                    <select value={sosPosition} onChange={e => setSosPosition(e.target.value)} className="w-full bg-background border border-border rounded-xl py-3 pl-11 pr-4 text-sm text-white appearance-none focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none cursor-pointer" required>
                       <option value="" disabled>포지션을 선택하세요</option>
                       <option value="drum">드럼</option>
                       <option value="bass">베이스</option>
                       <option value="guitar">기타</option>
                       <option value="keyboard">건반 / 피아노</option>
                       <option value="vocal">보컬</option>
+                      <option value="other">기타 악기</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-400">합주 시간 및 장소</label>
+                  <label className="text-xs font-bold text-slate-400">일시 및 장소</label>
                   <div className="relative mb-2">
                     <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input type="text" placeholder="예: 오늘 오후 7시 ~ 9시" className="w-full bg-background border border-border rounded-xl py-3 pl-11 pr-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" required />
+                    <input type="text" value={sosDatetime} onChange={e => setSosDatetime(e.target.value)} placeholder="예: 오늘 오후 7시 ~ 9시" className="w-full bg-background border border-border rounded-xl py-3 pl-11 pr-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" required />
                   </div>
-                  <div className="relative">
-                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input type="text" placeholder="예: 홍대 사운드홀릭 합주실 Room A" className="w-full bg-background border border-border rounded-xl py-3 pl-11 pr-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" required />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <select
+                        value={sosRegion}
+                        onChange={(e) => {
+                          setSosRegion(e.target.value);
+                          setSosSubRegion("");
+                        }}
+                        className="w-full bg-background border border-border rounded-xl py-3 pl-4 pr-8 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all text-white appearance-none cursor-pointer"
+                        required
+                      >
+                        <option value="" disabled>시/도</option>
+                        {Object.keys(KOREA_REGIONS).map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                    </div>
+                    <div className="relative flex-1">
+                      <select
+                        value={sosSubRegion}
+                        onChange={(e) => setSosSubRegion(e.target.value)}
+                        className="w-full bg-background border border-border rounded-xl py-3 pl-4 pr-8 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all text-white appearance-none cursor-pointer"
+                        required
+                        disabled={!sosRegion}
+                      >
+                        <option value="" disabled>시/군/구</option>
+                        {sosRegion && KOREA_REGIONS[sosRegion as keyof typeof KOREA_REGIONS]?.map((sr) => (
+                          <option key={sr} value={sr}>{sr}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                    </div>
                   </div>
+                  <div className="relative mt-2">
+                      <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                      <input type="text" value={sosDetailAddress} onChange={e => setSosDetailAddress(e.target.value)} placeholder="상세 주소를 입력해주세요 (선택)" className="w-full bg-background border border-border rounded-xl py-3 pl-11 pr-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" />
+                    </div>
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400">사례금 (페이)</label>
-                  <input type="text" placeholder="예: 교통비 3만원 지원 / 식사 제공 등" className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" required />
+                  <input type="text" value={sosPay} onChange={e => setSosPay(e.target.value)} placeholder="예: 교통비 3만원 지원 / 식사 제공 등" className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" required />
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400">참고사항</label>
-                  <textarea rows={2} placeholder="예: 드럼 기어는 다 세팅되어 있습니다. 하이햇 스틱만 가져오시면 됩니다!" className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none resize-none" />
+                  <textarea value={sosDesc} onChange={e => setSosDesc(e.target.value)} rows={2} placeholder="예: 드럼 기어는 다 세팅되어 있습니다. 하이햇 스틱만 가져오시면 됩니다!" className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none resize-none" />
                 </div>
                 
                 <button 

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Users, ShieldBan, ArrowLeft, Settings, BarChart2, HardDrive, Layout as LayoutIcon, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 const TABS = [
   { id: "overview", path: "/admin", label: "대시보드 홈", icon: LayoutIcon },
@@ -24,7 +25,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const adminStatus = localStorage.getItem('ourband_isAdmin') === 'true';
     setIsAdmin(adminStatus);
     if (!adminStatus) {
-      alert("관리자 권한이 필요합니다.");
+      toast.error("관리자 권한이 필요합니다.");
       router.push("/");
     }
   }, [router]);

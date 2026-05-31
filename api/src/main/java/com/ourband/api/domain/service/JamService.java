@@ -38,6 +38,14 @@ public class JamService {
     private final JamPostLikeRepository jamPostLikeRepository;
     private final JamPostCommentRepository jamPostCommentRepository;
     private final FollowRepository followRepository;
+    private final NotificationService notificationService;
+
+    @Transactional(readOnly = true)
+    public JamPostResponseDTO getJamPost(Long jamId, Long currentUserId) {
+        JamPost jamPost = jamPostRepository.findById(jamId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 잼 영상입니다."));
+        return mapToDTO(jamPost, currentUserId);
+    }
 
     @Transactional
     public JamPostResponseDTO createJamPost(Long userId, JamPostCreateRequestDTO request) {
@@ -68,6 +76,17 @@ public class JamService {
                 .build();
 
         JamPost saved = jamPostRepository.save(jamPost);
+
+        if (parentJam != null && parentJam.getUser() != null && !parentJam.getUser().getUserId().equals(userId)) {
+            notificationService.send(
+                    parentJam.getUser().getUserId(),
+                    userId,
+                    com.ourband.api.domain.model.NotificationType.JAM_DUET,
+                    saved.getId().toString(),
+                    user.getNickname() + "님이 회원님의 영상을 사용하여 듀엣을 생성했습니다."
+            );
+        }
+
         return mapToDTO(saved, userId);
     }
 
@@ -119,6 +138,19 @@ public class JamService {
                             .userId(userId)
                             .build());
                     jamPost.setLikeCount(jamPost.getLikeCount() + 1);
+
+                    if (jamPost.getUser() != null && !jamPost.getUser().getUserId().equals(userId)) {
+                        User liker = userRepository.findById(userId).orElse(null);
+                        String likerName = liker != null ? liker.getNickname() : "누군가";
+                        notificationService.send(
+                                jamPost.getUser().getUserId(),
+                                userId,
+                                com.ourband.api.domain.model.NotificationType.JAM_LIKE,
+                                jamPost.getId().toString(),
+                                likerName + "님이 회원님의 오디오 잼에 좋아요를 눌렀습니다."
+                        );
+                    }
+
                     return true;
                 });
     }
@@ -137,6 +169,18 @@ public class JamService {
 
         JamPostComment saved = jamPostCommentRepository.save(comment);
         jamPost.setCommentCount(jamPost.getCommentCount() + 1);
+
+        if (jamPost.getUser() != null && !jamPost.getUser().getUserId().equals(userId)) {
+            User commenter = userRepository.findById(userId).orElse(null);
+            String commenterName = commenter != null ? commenter.getNickname() : "누군가";
+            notificationService.send(
+                    jamPost.getUser().getUserId(),
+                    userId,
+                    com.ourband.api.domain.model.NotificationType.JAM_COMMENT,
+                    jamPost.getId().toString(),
+                    commenterName + "님이 회원님의 오디오 잼에 댓글을 달았습니다."
+            );
+        }
 
         return mapCommentToDTO(saved);
     }
@@ -248,3 +292,4 @@ public class JamService {
                 .build();
     }
 }
+

@@ -37,10 +37,7 @@ public class ChatWebSocketController {
             return;
         }
 
-        // 서비스 단에서 DB에 메시지 저장 후 응답 객체 반환
-        ChatMessageResponseDTO savedMessage = chatService.sendMessage(roomId, senderId, request.getContent());
-
-        // /sub/chat.room.{roomId} 를 구독하고 있는 모든 클라이언트에게 메시지 브로드캐스트
-        messagingTemplate.convertAndSend("/sub/chat.room." + roomId, savedMessage);
+        // 서비스 단에서 메시지를 Redis에 임시 저장하고, Pub/Sub으로 발행함 (DB 지연 쓰기)
+        chatService.sendMessage(roomId, senderId, request.getContent());
     }
 }

@@ -68,3 +68,13 @@ export const reportStudioApi = async (id: string | number, reason: string): Prom
   const response = await apiClient.post(`/studios/${id}/report`, { reason });
   return response.data;
 };
+
+export const callEmergencySessionApi = async (position: string, location: string, detailAddress: string, datetime: string): Promise<{ message: string }> => {
+  const response = await apiClient.post(`/studios/emergency-session`, {
+    position,
+    location,
+    detailAddress,
+    datetime
+  });
+  return response.data;
+};

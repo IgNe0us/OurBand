@@ -1,20 +1,22 @@
 "use client";
 import { useContext, useEffect } from "react";
 import { AudioJamModal } from "@/components/jam/AudioJamModal";
-import { UserProfileModal } from "@/components/common/UserProfileModal";
-// @ts-nocheck
 import { LayoutContext } from "@/components/layout/AppLayout";
+import { useUserProfile } from "@/store/userProfileContext";
 
 import React, { useState } from "react";
 import { Settings, Share, Music2, Edit3, Play, MapPin, CalendarDays, Zap, AtSign, Menu, X, LogOut, Bell, Shield, Users, Plus, Trash2, Check, UserMinus, GuitarIcon, Guitar, User, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from 'next/navigation';
+import { KOREA_REGIONS } from "@/lib/regions";
 import Link from 'next/link';
 import type { LayoutContextType } from "@/components/layout/AppLayout";
 import { AnimatePresence, motion } from "motion/react";
 import { addFavoriteMusicApi, addGearApi, addHistoryApi, deleteFavoriteMusicApi, deleteGearApi, deleteHistoryApi, getUserInfoApi, logoutApi, updateProfileApi, updateProfileImageApi, getFollowersApi, getFollowingsApi, toggleFollowApi, type FollowUser } from "@/api/account/userService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
 import { getUserJamPostsApi, createJamPostApi, deleteJamPostApi, type JamPostData } from "@/api/jam/jamService";
+import toast from "react-hot-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 interface Band {
   bandId: number;
@@ -56,9 +58,11 @@ interface ProfileData {
 }
 
 export default function ProfilePage() {
+  const { confirm } = useConfirm();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [instrument, setInstrument] = useState("");
-  const [location, setLocation] = useState("");
+  const [region, setRegion] = useState("");
+  const [subRegion, setSubRegion] = useState("");
   const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"좋아하는 곡" | "히스토리" | "내 오디오잼" | "내 장비">("좋아하는 곡");
@@ -67,7 +71,7 @@ export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeFollowModal, setActiveFollowModal] = useState<"follower" | "following" | null>(null);
-  const [selectedUser, setSelectedUser] = useState<{ id: string | number; name: string; imageSeed: string } | null>(null);
+  const { openUserProfile } = useUserProfile();
 
   const historyFileInputRef = React.useRef<HTMLInputElement>(null);
   const [historyFile, setHistoryFile] = useState<File | null>(null);         // 실제 업로드할 파일 보관
@@ -117,7 +121,7 @@ export default function ProfilePage() {
 
   // 2. 최종 저장 (이때 Cloudflare 업로드 + DB 저장 진행)
   const handleAddHistory = async () => {
-    if (!newHistoryTitle.trim()) return alert("제목을 입력해주세요!");
+    if (!newHistoryTitle.trim()) return toast.error("제목을 입력해주세요!");
 
     setIsUploading(true); // 여기서 업로드 시작 상태로 변경
     try {
@@ -146,7 +150,7 @@ export default function ProfilePage() {
       closeHistoryModal();
     } catch (error) {
       console.error("히스토리 등록 실패:", error);
-      alert("히스토리 등록에 실패했습니다.");
+      toast.error("히스토리 등록에 실패했습니다.");
     } finally {
       setIsUploading(false); // 로딩 끝
     }
@@ -162,7 +166,7 @@ export default function ProfilePage() {
   };
 
   const handleDeleteHistory = async (historyId: number) => {
-    if (!confirm("정말 이 히스토리를 삭제하시겠습니까?\n첨부된 파일도 R2 저장소에서 전면 삭제됩니다.")) return;
+    if (!await confirm({ message: "정말 이 히스토리를 삭제하시겠습니까?\n첨부된 파일도 R2 저장소에서 전면 삭제됩니다.", isDestructive: true })) return;
 
     try {
       // 1. 서버 삭제 API 요청 실행 (R2 스토리지 파일 및 DB 데이터 증발)
@@ -174,10 +178,10 @@ export default function ProfilePage() {
         histories: prev.histories.filter(h => h.id !== historyId)
       } : null);
 
-      alert("히스토리가 성공적으로 삭제되었습니다.");
+      toast.success("히스토리가 성공적으로 삭제되었습니다.");
     } catch (error) {
       console.error("히스토리 삭제 중 오류 발생:", error);
-      alert("삭제 처리에 실패했습니다. 다시 시도해 주세요.");
+      toast.error("삭제 처리에 실패했습니다. 다시 시도해 주세요.");
     }
   };
 
@@ -199,9 +203,9 @@ export default function ProfilePage() {
           coverImageUrl: type === "COVER" ? imageUrl : prev.coverImageUrl
       } : null);
       
-      alert("사진이 변경되었습니다.");
+      toast.success("사진이 변경되었습니다.");
     } catch (err) {
-      alert("업로드 실패");
+      toast.error("업로드 실패");
     }
   };
 
@@ -226,13 +230,13 @@ export default function ProfilePage() {
       setIsAddingMusic(false);
     } catch (err) {
       console.error("곡 등록 실패:", err);
-      alert("곡 등록에 실패했습니다.");
+      toast.error("곡 등록에 실패했습니다.");
     }
   };
 
   const handleDeleteMusic = async (musicId: number) => {
     // 실제 삭제 요청 전 사용자 확인 (선택 사항)
-    if (!confirm("정말 이 곡을 삭제하시겠습니까?")) return;
+    if (!await confirm({ message: "정말 이 곡을 삭제하시겠습니까?", isDestructive: true })) return;
 
     try {
       // 1. 서버 API 호출
@@ -246,7 +250,7 @@ export default function ProfilePage() {
       
     } catch (err) {
       console.error("삭제 실패:", err);
-      alert("삭제에 실패했습니다. 다시 시도해주세요.");
+      toast.error("삭제에 실패했습니다. 다시 시도해주세요.");
     }
   };
 
@@ -271,13 +275,13 @@ export default function ProfilePage() {
       setIsAddingGear(false);
     } catch (err) {
       console.error("장비 등록 실패:", err);
-      alert("장비 등록에 실패했습니다.");
+      toast.error("장비 등록에 실패했습니다.");
     }
   };
 
   const handleDeleteGear = async (gearId: number) => {
     // 실제 삭제 요청 전 사용자 확인 (선택 사항)
-    if (!confirm("정말 이 장비를 삭제하시겠습니까?")) return;
+    if (!await confirm({ message: "정말 이 장비를 삭제하시겠습니까?", isDestructive: true })) return;
 
     try {
       // 1. 서버 API 호출
@@ -291,7 +295,7 @@ export default function ProfilePage() {
       
     } catch (err) {
       console.error("삭제 실패:", err);
-      alert("삭제에 실패했습니다. 다시 시도해주세요.");
+      toast.error("삭제에 실패했습니다. 다시 시도해주세요.");
     }
   };
 
@@ -299,7 +303,7 @@ export default function ProfilePage() {
     await updateProfileApi(
         bio,
         instrument,
-        location
+        `${region} ${subRegion}`.trim()
     );
 
     setIsEditing(false);
@@ -307,7 +311,7 @@ export default function ProfilePage() {
   };
 
   const handleLogout = async() => {
-    alert("안전하게 로그아웃 되었습니다.");
+    toast.success("안전하게 로그아웃 되었습니다.");
     await logoutApi();
     setIsSettingsOpen(false);
     navigate("/login");
@@ -359,7 +363,7 @@ export default function ProfilePage() {
       });
     } catch (error) {
       console.error("팔로우 토글 실패:", error);
-      alert("팔로우 처리에 실패했습니다.");
+      toast.error("팔로우 처리에 실패했습니다.");
     }
   };
 
@@ -371,7 +375,11 @@ export default function ProfilePage() {
             setProfileData(data);
             setBio(data.bio || "");
             setInstrument(data.instrument || "");
-            setLocation(data.location || "");
+            if (data.location) {
+              const parts = data.location.split(" ");
+              setRegion(parts[0] || "");
+              setSubRegion(parts.slice(1).join(" ") || "");
+            }
             setLoading(false);
           })
           .catch(err => {
@@ -404,22 +412,22 @@ export default function ProfilePage() {
         originalVolume: 1.0,
         myVolume: 1.0
       });
-      alert("오디오잼 보드로 성공적으로 발행되었습니다!");
+      toast.success("오디오잼 보드로 성공적으로 발행되었습니다!");
       setActiveTab("내 오디오잼");
     } catch (err) {
-      alert("오디오잼 발행 중 오류가 발생했습니다.");
+      toast.error("오디오잼 발행 중 오류가 발생했습니다.");
     }
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-white">로딩중...</div>;
   const handleDeleteJam = async (jamId: number) => {
-    if (!confirm("오디오잼 영상을 삭제하시겠습니까?")) return;
+    if (!await confirm({ message: "오디오잼 영상을 삭제하시겠습니까?", isDestructive: true })) return;
     try {
       await deleteJamPostApi(jamId);
       setMyJams(prev => prev.filter(j => j.id !== jamId));
     } catch (err) {
       console.error(err);
-      alert("삭제에 실패했습니다.");
+      toast.error("삭제에 실패했습니다.");
     }
   };
 
@@ -469,7 +477,7 @@ export default function ProfilePage() {
           <button 
             onClick={(e) => {
               e.stopPropagation();
-              alert("프로필 링크가 복사되었습니다!");
+              toast.success("프로필 링크가 복사되었습니다!");
             }}
             className="w-10 h-10 bg-black/40 backdrop-blur-xl rounded-full flex items-center justify-center text-white border border-border hover:bg-white/10 transition-colors shrink-0"
           >
@@ -863,13 +871,41 @@ export default function ProfilePage() {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-2">활동구역 (동네)</label>
-                  <input 
-                    type="text" 
-                    value={location || ""} 
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary" 
-                    onChange={(e) => setLocation(e.target.value)}
-                  />
+                  <label className="block text-xs font-bold text-slate-400 mb-2">활동구역</label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <select
+                        value={region}
+                        onChange={(e) => {
+                          setRegion(e.target.value);
+                          setSubRegion("");
+                        }}
+                        className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-4 pr-8 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white appearance-none cursor-pointer"
+                        required
+                      >
+                        <option value="" disabled>시/도</option>
+                        {Object.keys(KOREA_REGIONS).map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                    </div>
+                    <div className="relative flex-1">
+                      <select
+                        value={subRegion}
+                        onChange={(e) => setSubRegion(e.target.value)}
+                        className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-4 pr-8 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white appearance-none cursor-pointer"
+                        required
+                        disabled={!region}
+                      >
+                        <option value="" disabled>시/군/구</option>
+                        {region && KOREA_REGIONS[region]?.map((sr) => (
+                          <option key={sr} value={sr}>{sr}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-400 mb-2">포지션 (악기)</label>
@@ -939,7 +975,7 @@ export default function ProfilePage() {
               
               <div className="space-y-3">
                 <button 
-                  onClick={() => alert("알림 설정 페이지로 이동합니다.")}
+                  onClick={() => toast.error("알림 설정 페이지로 이동합니다.")}
                   className="w-full flex items-center justify-between p-4 bg-background/50 border border-border hover:border-slate-500 rounded-xl transition-colors group"
                 >
                   <div className="flex items-center gap-3">
@@ -948,7 +984,7 @@ export default function ProfilePage() {
                   </div>
                 </button>
                 <button 
-                  onClick={() => alert("계정 및 보안 설정 페이지로 이동합니다.")}
+                  onClick={() => toast.error("계정 및 보안 설정 페이지로 이동합니다.")}
                   className="w-full flex items-center justify-between p-4 bg-background/50 border border-border hover:border-slate-500 rounded-xl transition-colors group"
                 >
                   <div className="flex items-center gap-3">
@@ -1133,16 +1169,20 @@ export default function ProfilePage() {
                     <div 
                       key={`follow-user-${user.userId}-${idx}`} 
                       className="flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition-colors cursor-pointer group"
-                      onClick={() => setSelectedUser({ id: user.userId, name: user.nickname, imageSeed: String(user.userId) })}
+                      onClick={() => openUserProfile(user.userId, user.nickname, user.profilePictureUrl || "")}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-800 shrink-0 border border-border">
-                          <img 
-                            src={user.profilePictureUrl || `https://picsum.photos/seed/user${user.userId}/100/100`} 
-                            alt={user.nickname} 
-                            referrerPolicy="no-referrer" 
-                            className="w-full h-full object-cover" 
-                          />
+                        <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center bg-slate-800 shrink-0 border border-border">
+                          {user.profilePictureUrl ? (
+                            <img 
+                              src={user.profilePictureUrl} 
+                              alt={user.nickname} 
+                              referrerPolicy="no-referrer" 
+                              className="w-full h-full object-cover" 
+                            />
+                          ) : (
+                            <User size={24} className="text-slate-500" />
+                          )}
                         </div>
                         <div className="flex flex-col">
                           <span className="font-bold text-white text-sm group-hover:text-primary transition-colors">{user.nickname}</span>
@@ -1201,14 +1241,6 @@ export default function ProfilePage() {
 
           type: selectedHistory.mediaType?.toUpperCase() === "VIDEO" ? "video" : "post"
         } : null}
-      />
-
-      <UserProfileModal 
-        isOpen={!!selectedUser}
-        onClose={() => setSelectedUser(null)}
-        userId={selectedUser?.id}
-        userName={selectedUser?.name}
-        userImage={selectedUser ? (selectedUser.imageSeed?.startsWith('http') ? selectedUser.imageSeed : `https://picsum.photos/seed/user${selectedUser.id}/200/200`) : undefined}
       />
     </div>
   );

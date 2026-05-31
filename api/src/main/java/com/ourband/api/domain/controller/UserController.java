@@ -11,7 +11,9 @@ import com.ourband.api.domain.dto.user.UserProfileUpdateRequestDTO;
 import com.ourband.api.domain.dto.user.UserRequestDTO;
 import com.ourband.api.domain.model.Profile;
 import com.ourband.api.domain.model.User;
+import com.ourband.api.domain.model.BandMember;
 import com.ourband.api.domain.service.UserService;
+import com.ourband.api.domain.repository.BandMemberRepository;
 import com.ourband.api.global.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -32,6 +34,7 @@ import java.util.Map;
 public class UserController {
 
     private final UserService userService;
+    private final BandMemberRepository bandMemberRepository;
     private final JwtUtil jwtUtil;
 
     /**
@@ -51,11 +54,21 @@ public class UserController {
                 .httpOnly(false)
                 .secure(false) // 개발환경 false
                 .path("/")
-                .maxAge(60 * 60 * 24)
+                .maxAge(60 * 60) // 1시간
                 .sameSite("Lax")
                 .build();
 
-            response.addHeader("Set-Cookie", cookie.toString());
+            String refreshToken = jwtUtil.generateRefreshToken(user.getUserId());
+            ResponseCookie refreshCookie = ResponseCookie.from("refresh_token", refreshToken)
+                .httpOnly(true)
+                .secure(false) // 개발환경 false
+                .path("/")
+                .maxAge(60 * 60 * 24 * 7) // 7일
+                .sameSite("Lax")
+                .build();
+
+            response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+            response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
 
             Map<String, Object> responseBody = new HashMap<>();
             responseBody.put("userId", user.getUserId());
@@ -73,21 +86,96 @@ public class UserController {
     /*
      * 로그이웃 API
      */
-
     @PostMapping("/logout")
-        public ResponseEntity<?> logout() {
+    public ResponseEntity<?> logout(
+            @CookieValue(value = "access_token", required = false) String accessToken,
+            @CookieValue(value = "refresh_token", required = false) String refreshToken,
+            HttpServletResponse response) {
 
-            ResponseCookie deleteCookie = ResponseCookie.from("access_token", "")
-                    .httpOnly(false)
-                    .secure(false)
-                    .path("/")
-                    .maxAge(0)
-                    .build();
-
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.SET_COOKIE, deleteCookie.toString())
-                    .body(Map.of("message", "로그아웃 완료"));
+        if (accessToken != null && !accessToken.isEmpty()) {
+            try {
+                // 토큰 블랙리스트 추가
+                jwtUtil.invalidateToken(accessToken);
+            } catch (Exception e) {
+                // Ignore expired token
+            }
         }
+        
+        if (refreshToken != null && !refreshToken.isEmpty()) {
+            try {
+                // 리프레시 토큰 파기
+                jwtUtil.deleteRefreshToken(refreshToken);
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+
+        ResponseCookie deleteCookie = ResponseCookie.from("access_token", "")
+                .httpOnly(false)
+                .secure(false)
+                .path("/")
+                .maxAge(0)
+                .build();
+
+        ResponseCookie deleteRefreshCookie = ResponseCookie.from("refresh_token", "")
+                .httpOnly(true)
+                .secure(false)
+                .path("/")
+                .maxAge(0)
+                .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, deleteCookie.toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, deleteRefreshCookie.toString());
+
+        return ResponseEntity.ok()
+                .body(Map.of("message", "로그아웃 완료"));
+    }
+
+    /*
+     * 토큰 재발급 API
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(
+            @CookieValue(value = "refresh_token", required = false) String refreshToken,
+            HttpServletResponse response) {
+
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Refresh Token이 없습니다."));
+        }
+
+        try {
+            // AuthService 혹은 별도 로직을 통해 Redis에 존재하는지 확인. 여기선 UserService 위임 혹은 직접 처리
+            // 좀 더 깔끔하게 처리를 위해 UserService 에 위임하겠습니다.
+            User user = userService.refreshUserToken(refreshToken);
+
+            // 새 토큰 발급
+            String newAccessToken = jwtUtil.generateToken(user.getUserId(), user.getEmail(), user.getType());
+            String newRefreshToken = jwtUtil.generateRefreshToken(user.getUserId());
+
+            ResponseCookie cookie = ResponseCookie.from("access_token", newAccessToken)
+                .httpOnly(false)
+                .secure(false)
+                .path("/")
+                .maxAge(60 * 60)
+                .sameSite("Lax")
+                .build();
+
+            ResponseCookie refreshCookie = ResponseCookie.from("refresh_token", newRefreshToken)
+                .httpOnly(true)
+                .secure(false)
+                .path("/")
+                .maxAge(60 * 60 * 24 * 7)
+                .sameSite("Lax")
+                .build();
+
+            response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+            response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+
+            return ResponseEntity.ok(Map.of("message", "토큰 재발급 성공"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "유효하지 않은 Refresh Token 입니다. 다시 로그인해주세요."));
+        }
+    }
 
     /**
      * 회원가입 API
@@ -128,10 +216,37 @@ public class UserController {
         } catch (Exception e) {
             // 토큰이 만료되었거나 변조된 경우
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", "유효하지 않은 토큰입니다. 다시 로그인해주세요."));
+                    .body(Map.of("message", "유효하지 않은 토큰입니다."));
         }
     }
-    
+
+    /**
+     * 타인 프로필 조회 API
+     */
+    @GetMapping("/profile/{userId}")
+    public ResponseEntity<?> getUserProfile(
+            @PathVariable("userId") Long targetUserId,
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        try {
+            Long currentUserId = null;
+            if (accessToken != null && !accessToken.isEmpty()) {
+                try {
+                    currentUserId = jwtUtil.getUserId(accessToken);
+                } catch (Exception ignored) {
+                }
+            }
+            
+            UserProfileResponseDTO profileData = userService.getUserFullProfile(currentUserId, targetUserId);
+            return ResponseEntity.ok(profileData);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "사용자를 찾을 수 없습니다."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "프로필 조회 중 오류가 발생했습니다."));
+        }
+    }
+
     /**
      * [수정] 프로필 업데이트 API (하드코딩 제거)
      * 방명록, 포지션, 활동구역 3가지를 업데이트 합니다.
@@ -345,7 +460,21 @@ public class UserController {
                 map.put("name", b.getBandName());
                 map.put("logoImageUrl", b.getLogoImageUrl());
                 map.put("role", b.getRole());
-                map.put("isLeader", "Leader".equalsIgnoreCase(b.getRole()) || "리더".equals(b.getRole())); // Or true if they created it, but let's just default to role logic for now.
+                
+                // 리더 판별 로직: 이 밴드의 멤버 중 userId가 null이 아닌 가장 작은 id를 가진 멤버가 리더
+                List<BandMember> members = bandMemberRepository.findByBandId(b.getBandId());
+                boolean isLeader = false;
+                if (!members.isEmpty()) {
+                    BandMember leader = members.stream()
+                        .filter(m -> m.getUserId() != null)
+                        .min(java.util.Comparator.comparing(BandMember::getId))
+                        .orElse(null);
+                    if (leader != null && currentUserId.equals(leader.getUserId())) {
+                        isLeader = true;
+                    }
+                }
+                
+                map.put("isLeader", isLeader);
                 return map;
             }).toList();
             

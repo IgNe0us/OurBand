@@ -1,17 +1,19 @@
 "use client";
 // @ts-nocheck
-import { Play, Heart, MessageCircle, Share2, Plus, X, Send, Check } from "lucide-react";
+import { Play, Heart, MessageCircle, Share2, Plus, X, Send, Check, User } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { VideoPost } from "../band/VideoPostModal";
 import { addHistoryCommentApi, increaseHistoryShareApi, toggleHistoryLikeApi } from "@/api/account/userService";
 import { apiClient } from "@/api/baseApi";
+import { useUserProfile } from "@/store/userProfileContext";
 
 export type PopularJamVideo = VideoPost & { 
   likes?: number; 
   likedByMe?: boolean;
   author?: string; 
+  authorId?: number | string;
   authorAvatar?: string;
   commentsCount?: number; 
   sharesCount?: number; 
@@ -58,6 +60,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
   const [isFollowing, setIsFollowing] = useState(false);
   const [localLikes, setLocalLikes] = useState(0);
   const [localShares, setLocalShares] = useState(0);
+  const { openUserProfile } = useUserProfile();
   
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
@@ -98,7 +101,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
             const mapped = res.data.map((c: any) => ({
               id: c.id,
               author: c.author,
-              avatar: c.profilePictureUrl || "https://picsum.photos/seed/default/100/100",
+              avatar: c.profilePictureUrl || "",
               text: c.content,
               time: formatRelativeTime(c.createdAt) // 필요 시 포맷팅 함수 연동 가능
             }));
@@ -146,7 +149,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
         { 
           id: savedComment.id, 
           author: savedComment.author, 
-          avatar: savedComment.profilePictureUrl || "https://picsum.photos/seed/default/100/100",
+          avatar: savedComment.profilePictureUrl || "",
           text: savedComment.content, 
           time: "방금 전" 
         },
@@ -240,12 +243,19 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
           {/* Right Action Bar */}
           <div className="absolute right-4 bottom-28 flex flex-col items-center gap-7 z-20 pointer-events-auto">
             <div className="relative">
-              <div className="w-12 h-12 rounded-full border-[3px] border-white overflow-hidden shadow-lg cursor-pointer bg-slate-800">
-                <img 
-                  src={post.authorAvatar || "https://picsum.photos/seed/default/100/100"} 
-                  alt="User" 
-                  className="w-full h-full object-cover"
-                />
+              <div 
+                className="w-10 h-10 rounded-full border-2 border-background overflow-hidden bg-slate-800 shrink-0 cursor-pointer flex items-center justify-center"
+                onClick={() => post.authorId && openUserProfile(Number(post.authorId), post.author, post.authorAvatar)}
+              >
+                {post.authorAvatar ? (
+                  <img 
+                    src={post.authorAvatar} 
+                    alt="User" 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User size={20} className="text-slate-500" />
+                )}
               </div>
               <AnimatePresence>
                 {/* 💡 내 히스토리 글(!isHistory)이 아닐 때만 팔로우 버튼 활성화 */}
@@ -355,10 +365,13 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
                   <div className="flex-1 overflow-y-auto p-5 space-y-5 hide-scrollbar">
                     {comments.map((c, idx) => (
                       <div key={`comment-${c.id}-${idx}`} className="flex gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 overflow-hidden">
-                          {/* 💡 기존의 picsum 고정 주소를 지우고 c.avatar로 전면 교체! */}
-                          <img src={c.avatar} alt={c.author} className="w-full h-full object-cover" />
-                        </div>
+                          <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 border border-border flex items-center justify-center overflow-hidden">
+                            {c.avatar ? (
+                              <img src={c.avatar} alt={c.author} className="w-full h-full object-cover" />
+                            ) : (
+                              <User size={16} className="text-slate-500" />
+                            )}
+                          </div>
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs font-bold text-slate-300">{c.author}</span>

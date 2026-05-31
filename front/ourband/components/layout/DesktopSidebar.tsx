@@ -7,6 +7,8 @@ import { Home, Search, Music, MapPin, User, MessageCircle, Mic2, HeartHandshake,
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { getUserInfoApi } from "@/api/account/userService";
+import { useChatStore } from "@/store/chatStore";
+import { useNotificationStore } from "@/store/notificationStore";
 
 const NAV_ITEMS = [
   { path: "/", label: "트렌드", icon: Home },
@@ -28,6 +30,8 @@ export function DesktopSidebar() {
   const location = { pathname: pathname || "/" };
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const totalUnreadCount = useChatStore(state => state.totalUnreadCount);
+  const notificationCount = useNotificationStore(state => state.unreadCount);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem('ourband_isAdmin') === 'true');
@@ -154,20 +158,32 @@ export function DesktopSidebar() {
             <div className="flex items-center gap-2 px-1 border-b border-border/50 pb-4">
               <Link href="/notifications" className="relative flex-1 flex justify-center py-2 rounded-xl bg-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-800 transition-all group">
                 <Bell size={20} className="group-hover:scale-110 transition-transform" />
-                <span className="absolute top-1.5 right-1/4 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-secondary animate-pulse" />
+                {notificationCount > 0 && (
+                  <span className="absolute top-1.5 right-1/4 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-secondary animate-pulse" />
+                )}
               </Link>
               <Link href="/chat" className="relative flex-1 flex justify-center py-2 rounded-xl bg-primary/10 text-primary hover:text-white hover:bg-primary transition-all group">
                 <Send size={20} className="group-hover:scale-110 transition-transform" />
-                <span className="absolute top-1.5 right-1/4 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-secondary animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+                {totalUnreadCount > 0 && (
+                  <span className="absolute -top-1 right-1/4 translate-x-1.5 w-4 h-4 bg-red-500 rounded-full border-2 border-secondary flex items-center justify-center text-[9px] font-bold text-white shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse">
+                    {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+                  </span>
+                )}
               </Link>
             </div>
             <Link href="/profile" className="flex items-center gap-3 group">
-              <img 
-                src={user.profilePictureUrl || `https://picsum.photos/seed/user${user.userId || '1'}/100/100`} 
-                alt="My Profile" 
-                className="w-10 h-10 rounded-full border border-border group-hover:border-primary transition-colors object-cover shrink-0" 
-                referrerPolicy="no-referrer"
-              />
+              <div className="w-10 h-10 rounded-full border border-border group-hover:border-primary transition-colors overflow-hidden shrink-0 flex items-center justify-center bg-slate-800">
+                {user.profilePictureUrl ? (
+                  <img 
+                    src={user.profilePictureUrl} 
+                    alt="My Profile" 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <User size={20} className="text-slate-500" />
+                )}
+              </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">{user.nickname}</span>
                 <span className="text-xs text-slate-400 truncate">@{user.handle || `user_${user.userId || '1'}`}</span>

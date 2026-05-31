@@ -1,5 +1,18 @@
 
-import { BandPreviewData } from "@/components/band/BandPreviewModal";
+export interface BandPreviewData {
+  id: number;
+  name: string;
+  genre: string;
+  coverImage?: string;
+  logoImage?: string;
+  location?: string;
+  frequency?: string;
+  tags?: string[];
+  description?: string;
+  videos?: any[];
+  members?: any[];
+  history?: any[];
+}
 
 export const MOCK_TRENDING_BANDS: BandPreviewData[] = [
   {

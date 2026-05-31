@@ -46,6 +46,11 @@ export const deleteJamPostApi = async (jamId: number): Promise<void> => {
   await apiClient.delete(`/jams/${jamId}`);
 };
 
+export const getJamPostApi = async (jamId: number): Promise<JamPostData> => {
+  const response = await apiClient.get(`/jams/${jamId}`);
+  return response.data;
+};
+
 export const searchJamPostsApi = async (genre?: string, instrument?: string, page: number = 0, size: number = 10) => {
   const params: any = { page, size };
   if (genre) params.genre = genre;

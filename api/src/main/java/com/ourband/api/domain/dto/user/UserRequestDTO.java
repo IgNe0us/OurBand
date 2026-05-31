@@ -32,6 +32,8 @@ public class UserRequestDTO {
     // profile 테이블로 들어갈 주 악기 포지션 (사업자는 null)
     private String instrument;
 
+    private String location;
+
     /** 프로필 설명 (Bio) */
     // private String bio;
 

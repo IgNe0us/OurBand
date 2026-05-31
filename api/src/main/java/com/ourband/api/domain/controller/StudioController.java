@@ -106,4 +106,22 @@ public class StudioController {
                     .body(Map.of("message", e.getMessage()));
         }
     }
+
+    @PostMapping("/emergency-session")
+    public ResponseEntity<?> callEmergencySession(
+            @CookieValue(value = "access_token", required = false) String accessToken,
+            @RequestBody com.ourband.api.domain.dto.studio.EmergencySessionRequestDTO request) {
+        try {
+            if (accessToken == null || accessToken.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("message", "로그인이 필요합니다."));
+            }
+            Long currentUserId = jwtUtil.getUserId(accessToken);
+            studioService.callEmergencySession(request, currentUserId);
+            return ResponseEntity.ok(Map.of("message", "긴급 세션 알림이 발송되었습니다."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
 }

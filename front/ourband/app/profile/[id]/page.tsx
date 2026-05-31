@@ -10,6 +10,7 @@ import Link from 'next/link';
 import type { LayoutContextType } from "@/components/layout/AppLayout";
 import { AnimatePresence, motion } from "motion/react";
 import { UserProfileModal } from "@/components/common/UserProfileModal";
+import toast from "react-hot-toast";
 export default function ProfileIdDynamicPage() {
   const { userId } = useParams();
   const router = useRouter();
@@ -59,7 +60,7 @@ export default function ProfileIdDynamicPage() {
         </button>
         <h1 className="font-bold text-white absolute left-1/2 -translate-x-1/2">프로필</h1>
         <button 
-          onClick={() => alert("프로필 링크가 복사되었습니다!")}
+          onClick={() => toast.success("프로필 링크가 복사되었습니다!")}
           className="p-2 -mr-2 text-white hover:bg-white/10 rounded-full transition-colors"
         >
           <Share size={20} />

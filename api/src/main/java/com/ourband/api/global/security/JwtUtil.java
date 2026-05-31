@@ -6,17 +6,19 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
 public class JwtUtil {
 
-    // 💡 @Value 대신 우리가 만든 JwtProperties를 통째로 주입받습니다.
     private final JwtProperties jwtProperties;
+    private final StringRedisTemplate stringRedisTemplate;
     private Key secretKey;
 
     @PostConstruct
@@ -40,8 +42,47 @@ public class JwtUtil {
                 .compact();
     }
 
+    public String generateRefreshToken(Long userId) {
+        String refreshToken = UUID.randomUUID().toString();
+        // Redis에 Refresh Token 저장 (Key: token, Value: userId)
+        stringRedisTemplate.opsForValue().set(
+                "refresh_token_id:" + refreshToken,
+                userId.toString(),
+                jwtProperties.refreshExpiration(),
+                java.util.concurrent.TimeUnit.MILLISECONDS
+        );
+        return refreshToken;
+    }
+
+    public void invalidateToken(String token) {
+        try {
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(secretKey)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+            Date expiration = claims.getExpiration();
+            long timeToLive = expiration.getTime() - System.currentTimeMillis();
+            if (timeToLive > 0) {
+                stringRedisTemplate.opsForValue().set("blacklist:" + token, "true", timeToLive, java.util.concurrent.TimeUnit.MILLISECONDS);
+            }
+        } catch (Exception e) {
+            // 이미 만료되었거나 잘못된 토큰이면 무시
+        }
+    }
+
+    public void deleteRefreshToken(String refreshToken) {
+        stringRedisTemplate.delete("refresh_token_id:" + refreshToken);
+    }
+
     public boolean validateToken(String token) {
         try {
+            // 블랙리스트 확인
+            String isBlacklisted = stringRedisTemplate.opsForValue().get("blacklist:" + token);
+            if ("true".equals(isBlacklisted)) {
+                return false;
+            }
+
             Jwts.parserBuilder()
                     .setSigningKey(secretKey)
                     .build()

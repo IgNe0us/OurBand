@@ -1,12 +1,15 @@
 "use client";
 // @ts-nocheck
 
-import { X, UserPlus, UserCheck, MessageCircle, MapPin, Music2, Users2, Guitar, History, Disc, Play, ThumbsUp } from "lucide-react";
+import { X, UserPlus, UserCheck, MessageCircle, MapPin, Music2, Users2, Guitar, History, Disc, Play, ThumbsUp, User } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AudioJamModal, type PopularJamVideo } from "../jam/AudioJamModal";
-import { cn } from "@/lib/utils";;
+import { cn } from "@/lib/utils";
+import { getUserProfileApi, toggleFollowApi } from "@/api/account/userService";
+import { createOrGetRoomApi } from "@/api/chat/chatService";
+import toast from "react-hot-toast";
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -20,30 +23,45 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
   const router = useRouter();
   const navigate = (path: string) => router.push(path);
   const [selectedActivity, setSelectedActivity] = useState<PopularJamVideo | null>(null);
+  
+  const [profileData, setProfileData] = useState<any>(null);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const mockPostActivity: PopularJamVideo = {
-    id: "act-1",
-    title: "스트라토캐스터 픽업 교체 질문 있습니다.",
-    description: "싱싱험 사용중인데 리어 픽업 출력이 너무 약해서 교체하려고 합니다. 톤을 조금 더 두껍게 만들고 싶은데 추천해주실 만한 픽업이 있을까요?\\n\\nSeymour Duncan JB나 험버커 사이즈의 P90도 고려중입니다. 조언 부탁드려요!",
-    author: userName,
-    date: "2일 전",
-    thumbnail: "https://picsum.photos/seed/setup1/600/800",
-    likes: 12,
-    commentsCount: 5,
-    type: "post"
-  };
+  useEffect(() => {
+    if (isOpen && userId) {
+      const fetchProfile = async () => {
+        setLoading(true);
+        try {
+          const data = await getUserProfileApi(Number(userId));
+          setProfileData(data);
+          // 💡 Ensure isFollowing state reflects the API response if it exists in the DTO
+          // Jackson serializes boolean 'isFollowing' as 'following'
+          if (data.isFollowing !== undefined) {
+             setIsFollowing(data.isFollowing);
+          } else if (data.following !== undefined) {
+             setIsFollowing(data.following);
+          }
+        } catch (error) {
+          console.error("Failed to fetch user profile:", error);
+          toast.error("프로필 정보를 불러오는데 실패했습니다.");
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchProfile();
+    }
+  }, [isOpen, userId]);
 
-  const mockVideoActivity: PopularJamVideo = {
-    id: "act-2",
-    title: "블루스 백킹 트랙 기타 즉흥 연주",
-    date: "3일 전",
-    thumbnail: "https://picsum.photos/seed/jamimg1/600/800",
-    description: "주말에 집에서 혼자 잼해본 블루스 즉흥연주입니다. 펜더 스트랫 + 헬릭스 조합입니다.",
-    author: userName,
-    likes: 48,
-    commentsCount: 15,
-    type: "video"
+  const handleToggleFollow = async () => {
+    try {
+      const response = await toggleFollowApi(Number(userId));
+      setIsFollowing(response.isFollowing);
+      toast.success(response.isFollowing ? "팔로우 했습니다." : "언팔로우 했습니다.");
+    } catch (error) {
+      console.error("Failed to toggle follow:", error);
+      toast.error("팔로우 요청에 실패했습니다.");
+    }
   };
 
   return (
@@ -59,7 +77,16 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
             className="w-full max-w-md max-h-[85vh] overflow-y-auto hide-scrollbar bg-background border border-border rounded-3xl shadow-2xl relative flex flex-col"
           >
             {/* Cover */}
-            <div className="h-28 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border-b border-border/50 shrink-0 relative">
+            <div 
+              className={cn(
+                "h-28 border-b border-border/50 shrink-0 relative bg-cover bg-center",
+                !profileData?.coverImageUrl && "bg-gradient-to-br from-indigo-500/20 to-purple-500/20"
+              )}
+              style={profileData?.coverImageUrl ? { backgroundImage: `url(${profileData.coverImageUrl})` } : undefined}
+            >
+              {profileData?.coverImageUrl && (
+                <div className="absolute inset-0 bg-black/20" />
+              )}
               <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white transition-colors z-10">
                 <X size={18} />
               </button>
@@ -74,18 +101,18 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
                   navigate(`/profile/${userId}`);
                 }}
               >
-                {userImage ? (
-                  <img src={userImage} alt="Profile" className="w-full h-full object-cover" />
+                {userImage || profileData?.profilePictureUrl ? (
+                  <img src={userImage || profileData?.profilePictureUrl} alt="Profile" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-500">
-                    <Music2 size={32} />
+                  <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                    <User size={48} className="text-slate-500" />
                   </div>
                 )}
               </div>
               
               <div className="flex justify-end gap-2 w-full mb-6 relative z-10 -mt-8">
                 <button 
-                  onClick={() => setIsFollowing(!isFollowing)}
+                  onClick={handleToggleFollow}
                   className={cn(
                     "px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-lg flex items-center gap-1.5",
                     isFollowing
@@ -94,15 +121,20 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
                   )}
                 >
                   {isFollowing ? (
-                    <><UserCheck size={16} /> 팔로잉</>
+                    <><UserCheck size={16} /> 언팔로우</>
                   ) : (
                     <><UserPlus size={16} /> 팔로우</>
                   )}
                 </button>
                 <button 
-                  onClick={() => {
-                    onClose();
-                    navigate(`/chat/${userId}?type=direct&name=${encodeURIComponent(userName)}`);
+                  onClick={async () => {
+                    try {
+                      const roomId = await createOrGetRoomApi(Number(userId));
+                      onClose();
+                      navigate(`/chat/${roomId}`);
+                    } catch (e) {
+                      toast.error("채팅방을 열 수 없습니다.");
+                    }
                   }}
                   className="bg-secondary border border-border hover:bg-slate-800 text-white p-2 rounded-xl text-sm font-bold transition-colors flex items-center justify-center"
                 >
@@ -117,62 +149,71 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
                   navigate(`/profile/${userId}`);
                 }}
               >
-                {userName}
+                {userName || profileData?.nickname}
               </h3>
-              <p className="text-sm text-primary font-bold mb-3">일렉트릭 기타 • 보컬</p>
               
-              <div className="flex items-center gap-2 text-xs text-slate-400 mb-6 border border-border/50 bg-secondary/50 rounded-xl py-1.5 px-3 inline-flex">
-                <MapPin size={14} /> 서울특별시 마포구
-              </div>
+              {profileData?.instrument ? (
+                <p className="text-sm text-primary font-bold mb-3">{profileData.instrument}</p>
+              ) : (
+                <p className="text-sm text-slate-500 font-medium mb-3">포지션 미설정</p>
+              )}
               
-              <p className="text-sm text-slate-300 leading-relaxed mb-8 font-light line-clamp-3">
-                음악을 사랑하는 평범한 직장인입니다. 주로 주말에 홍대나 합정에서 합주하며 잼 하는 걸 좋아해요. 블루스와 펑크를 즐겨 연주합니다!
-              </p>
+              {profileData?.location ? (
+                <div className="flex items-center gap-2 text-xs text-slate-400 mb-6 border border-border/50 bg-secondary/50 rounded-xl py-1.5 px-3 inline-flex">
+                  <MapPin size={14} /> {profileData.location}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-slate-500 mb-6 border border-border/50 bg-secondary/30 rounded-xl py-1.5 px-3 inline-flex">
+                  <MapPin size={14} /> 지역 미설정
+                </div>
+              )}
+              
+              {profileData?.bio ? (
+                <p className="text-sm text-slate-300 leading-relaxed mb-8 font-light whitespace-pre-wrap">
+                  {profileData.bio}
+                </p>
+              ) : (
+                <p className="text-sm text-slate-500 leading-relaxed mb-8 italic">
+                  작성된 자기소개가 없습니다.
+                </p>
+              )}
               
               <div className="space-y-8 border-t border-border/50 pt-8">
                 {/* Posts & Videos */}
                 <section>
                   <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-4">
-                    <History size={16} className="text-primary"/> 최근 활동
+                    <History size={16} className="text-primary"/> 히스토리
                   </h4>
-                  <div className="flex flex-col gap-3">
-                    {/* Post */}
-                    <div 
-                      onClick={() => setSelectedActivity(mockPostActivity)}
-                      className="p-3 bg-secondary border border-border rounded-xl cursor-pointer hover:border-slate-600 transition-colors"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">장비질문</span>
-                        <span className="text-[10px] text-slate-500">2일 전</span>
-                      </div>
-                      <h5 className="text-sm font-bold text-white mb-1 line-clamp-1">스트라토캐스터 픽업 교체 질문 있습니다.</h5>
-                      <p className="text-xs text-slate-400 line-clamp-2 mb-3">싱싱험 사용중인데 리어 픽업 출력이 너무 약해서 교체하려고 합니다. 톤을 조금 더 두껍게 만들고 싶은데 추천해주실 만한...</p>
-                      <div className="flex items-center gap-3 text-xs text-slate-500">
-                        <span className="flex items-center gap-1"><ThumbsUp size={12}/> 12</span>
-                        <span className="flex items-center gap-1"><MessageCircle size={12}/> 5</span>
-                      </div>
-                    </div>
-                    {/* Video Jam */}
-                    <div 
-                      onClick={() => setSelectedActivity(mockVideoActivity)}
-                      className="flex gap-3 p-3 bg-secondary border border-border rounded-xl cursor-pointer hover:border-slate-600 transition-colors"
-                    >
-                      <div className="w-24 h-16 rounded-md bg-slate-800 shrink-0 overflow-hidden relative">
-                         <img src="https://picsum.photos/seed/jamimg1/200/100" className="w-full h-full object-cover opacity-80" alt="jam" referrerPolicy="no-referrer" />
-                         <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                           <Play size={16} className="text-white fill-white/80 drop-shadow-md" />
-                         </div>
-                      </div>
-                      <div className="flex-1 flex flex-col justify-center">
-                        <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded w-fit mb-1 border border-rose-500/20">잼 (Jam)</span>
-                        <h5 className="text-sm font-bold text-white line-clamp-1 mb-1">블루스 백킹 트랙 기타 즉흥 연주</h5>
-                        <div className="text-xs text-slate-400 flex items-center gap-2">
-                          <span className="flex items-center gap-1"><ThumbsUp size={12}/> 48</span>
-                          <span>3일 전</span>
+                  {profileData?.histories && profileData.histories.length > 0 ? (
+                    <div className="flex flex-row overflow-x-auto gap-3 pb-2 hide-scrollbar">
+                      {profileData.histories.slice(0, 3).map((history: any) => (
+                        <div 
+                          key={history.id}
+                          onClick={() => setSelectedActivity(history)}
+                          className="p-3 bg-secondary border border-border rounded-xl cursor-pointer hover:border-slate-600 transition-colors w-48 shrink-0 flex flex-col"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded shrink-0">
+                              {history.mediaType === 'VIDEO' ? '비디오' : '포스트'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 whitespace-nowrap">
+                              {new Date(history.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <h5 className="text-sm font-bold text-white mb-1 line-clamp-1">{history.title}</h5>
+                          <p className="text-xs text-slate-400 line-clamp-2 mb-3 flex-1">{history.content}</p>
+                          <div className="flex items-center gap-3 text-xs text-slate-500 mt-auto">
+                            <span className="flex items-center gap-1"><ThumbsUp size={12}/> {history.likeCount || 0}</span>
+                            <span className="flex items-center gap-1"><MessageCircle size={12}/> {history.commentCount || 0}</span>
+                          </div>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  </div>
+                  ) : (
+                    <div className="text-sm text-slate-500 bg-secondary/30 p-4 rounded-xl border border-border/50 text-center">
+                      최근 히스토리 내역이 없습니다.
+                    </div>
+                  )}
                 </section>
 
                 {/* 소속 밴드 */}
@@ -180,20 +221,31 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
                   <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-4">
                     <Users2 size={16} className="text-primary"/> 소속 밴드
                   </h4>
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-secondary border border-border hover:border-slate-600 transition-colors cursor-pointer">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-slate-800 overflow-hidden shrink-0">
-                          <img src="https://picsum.photos/seed/band1/100/100" className="w-full h-full object-cover" alt="band"/>
+                  {profileData?.bands && profileData.bands.length > 0 ? (
+                    <div className="flex flex-col gap-3">
+                      {profileData.bands.map((band: any) => (
+                        <div key={band.bandId} className="flex items-center justify-between p-3 rounded-xl bg-secondary border border-border transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-slate-800 overflow-hidden shrink-0">
+                              {band.logoImageUrl ? (
+                                <img src={band.logoImageUrl} className="w-full h-full object-cover" alt="band"/>
+                              ) : (
+                                <Users2 className="w-full h-full p-2 text-slate-500"/>
+                              )}
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-white leading-tight">{band.bandName}</div>
+                              {band.genre && <div className="text-xs text-slate-400">{band.genre}</div>}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-sm font-bold text-white leading-tight">Neon Dreams</div>
-                          <div className="text-xs text-slate-400">신스팝 / 인디록</div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-bold px-2 py-1 bg-slate-800 rounded-md text-slate-300">리드 기타</span>
+                      ))}
                     </div>
-                  </div>
+                  ) : (
+                    <div className="text-sm text-slate-500 bg-secondary/30 p-4 rounded-xl border border-border/50 text-center">
+                      소속된 밴드가 없습니다.
+                    </div>
+                  )}
                 </section>
 
                 {/* 사용 장비 */}
@@ -201,34 +253,40 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
                   <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-4">
                     <Guitar size={16} className="text-primary"/> 사용 장비 (Gear)
                   </h4>
-                  <ul className="space-y-2 text-sm text-slate-300 bg-secondary/30 p-4 rounded-xl border border-border/50">
-                    <li className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 bg-primary/50 flex-shrink-0 mt-1.5 rounded-full" />
-                      Fender American Pro II Stratocaster
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 bg-primary/50 flex-shrink-0 mt-1.5 rounded-full" />
-                      Gibson Les Paul Standard '50s
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 bg-primary/50 flex-shrink-0 mt-1.5 rounded-full" />
-                      Line 6 Helix Floor
-                    </li>
-                  </ul>
+                  {profileData?.gears && profileData.gears.length > 0 ? (
+                    <ul className="space-y-2 text-sm text-slate-300 bg-secondary/30 p-4 rounded-xl border border-border/50">
+                      {profileData.gears.map((gear: any) => (
+                        <li key={gear.id} className="flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 bg-primary/50 flex-shrink-0 mt-1.5 rounded-full" />
+                          {gear.gearName}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="text-sm text-slate-500 bg-secondary/30 p-4 rounded-xl border border-border/50 text-center">
+                      등록된 장비가 없습니다.
+                    </div>
+                  )}
                 </section>
 
                 {/* Favorite Music */}
                 <section>
                   <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-4">
-                    <Disc size={16} className="text-primary"/> Favorite Music
+                    <Disc size={16} className="text-primary"/> 좋아하는 곡
                   </h4>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="bg-slate-800 border border-border text-slate-300 text-xs px-3 py-1.5 rounded-lg">John Mayer</span>
-                    <span className="bg-slate-800 border border-border text-slate-300 text-xs px-3 py-1.5 rounded-lg">Oasis</span>
-                    <span className="bg-slate-800 border border-border text-slate-300 text-xs px-3 py-1.5 rounded-lg">Red Hot Chili Peppers</span>
-                    <span className="bg-slate-800 border border-border text-slate-300 text-xs px-3 py-1.5 rounded-lg">Stevie Ray Vaughan</span>
-                    <span className="bg-slate-800 border border-border text-slate-300 text-xs px-3 py-1.5 rounded-lg">City Pop</span>
-                  </div>
+                  {profileData?.favoriteMusics && profileData.favoriteMusics.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {profileData.favoriteMusics.map((music: any) => (
+                        <span key={music.id} className="bg-slate-800 border border-border text-slate-300 text-xs px-3 py-1.5 rounded-lg">
+                          {music.title}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-500 bg-secondary/30 p-4 rounded-xl border border-border/50 text-center">
+                      등록된 선호 곡이 없습니다.
+                    </div>
+                  )}
                 </section>
               </div>
             </div>
@@ -246,3 +304,4 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
     </>
   );
 }
+

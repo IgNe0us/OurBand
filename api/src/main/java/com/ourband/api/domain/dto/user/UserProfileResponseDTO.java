@@ -28,6 +28,9 @@ public class UserProfileResponseDTO {
     private int followingCount;
     private int bandCount; // 소속 밴드 수 (참여 잼 수)
     
+    // 5. 로그인 유저와의 관계
+    private boolean isFollowing;
+    
     // 4. 리스트 데이터 (별도 테이블들)
     private List<BandSimpleDTO> bands;        // 소속 밴드 목록
     private List<MusicSimpleDTO> favoriteMusics; // 좋아하는 곡

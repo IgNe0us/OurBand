@@ -87,4 +87,11 @@ public class UserHistory {
     public void increaseShareCount() {
         this.shareCount = (this.shareCount == null) ? 1 : this.shareCount + 1;
     }
+
+    /**
+     * 조회수 증가
+     */
+    public void increaseViewCount() {
+        this.viewCount = (this.viewCount == null) ? 1 : this.viewCount + 1;
+    }
 }

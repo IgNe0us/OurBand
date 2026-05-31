@@ -9,6 +9,7 @@ import { Music2, ArrowRight, Mail, Lock } from "lucide-react";
 import { motion } from "motion/react";
 
 import { loginUserApi } from "@/api/account/userService";
+import toast from "react-hot-toast";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -29,7 +30,7 @@ export default function LoginPage() {
 
     } catch (e) {
       console.error(e);
-      alert("로그인 실패");
+      toast.error("로그인 실패");
     } finally {
       setIsLoading(false);
     }

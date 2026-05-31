@@ -14,4 +14,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     
     // 유용할 수 있는 쿼리
     int countByChatRoom_IdAndIsReadFalseAndSenderIdNot(Long roomId, Long senderId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE ChatMessage c SET c.isRead = true WHERE c.chatRoom.id = :roomId AND c.senderId != :myUserId AND c.isRead = false")
+    void markMessagesAsRead(@org.springframework.data.repository.query.Param("roomId") Long roomId, @org.springframework.data.repository.query.Param("myUserId") Long myUserId);
 }

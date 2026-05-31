@@ -1,11 +1,12 @@
 "use client";
-import { BandPreviewModal, type BandPreviewData } from "@/components/band/BandPreviewModal";
+import { BandPreviewModal } from "@/components/band/BandPreviewModal";
+import { type BandProfileData } from "@/api/band/bandService";
 import { useContext } from "react";
 import { AudioJamModal } from "@/components/jam/AudioJamModal";
 // @ts-nocheck
 import { LayoutContext } from "@/components/layout/AppLayout";
 
-import { Play, TrendingUp, Star, MapPin, Search, Menu, Video, Heart, ChevronLeft, ChevronRight } from "lucide-react";
+import { Play, TrendingUp, Star, MapPin, Search, Menu, Video, Heart, ChevronLeft, ChevronRight, User } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import React, { useState, useRef, useEffect } from "react";
@@ -13,6 +14,7 @@ import { type VideoPost } from "@/components/band/VideoPostModal";
 import { cn } from "@/lib/utils";
 
 import { MOCK_TRENDING_BANDS } from "@/lib/mockData";
+import toast from "react-hot-toast";
 
 type PopularJamVideo = VideoPost & { likes: number; author: string; inst?: string; style?: string };
 
@@ -134,7 +136,7 @@ export default function HomePage() {
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [location, setLocation] = useState("서울 마포구 상수동");
   
-  const [selectedBand, setSelectedBand] = useState<BandPreviewData | null>(null);
+  const [selectedBand, setSelectedBand] = useState<BandProfileData | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<PopularJamVideo | null>(null);
   const [followedBands, setFollowedBands] = useState<number[]>([]);
 
@@ -263,7 +265,7 @@ export default function HomePage() {
             </div>
           </div>
           <button 
-            onClick={() => alert("통합 검색 모달이 열립니다.")}
+            onClick={() => toast.error("통합 검색 모달이 열립니다.")}
             className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center border border-border text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
           >
             <Search size={18} />
@@ -301,14 +303,14 @@ export default function HomePage() {
                   className="w-[85vw] max-w-[320px] sm:max-w-[350px] md:w-[320px] md:max-w-none bg-secondary rounded-[2rem] overflow-hidden shadow-2xl border border-border shrink-0 group relative cursor-pointer"
                   whileHover={{ y: -5 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  onClick={() => setSelectedBand(band)}
+                  onClick={() => setSelectedBand(band as any)}
                 >
                   <div className="relative h-48 bg-slate-800">
                     <img src={band.coverImage} alt="Band cover" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" referrerPolicy="no-referrer" />
                     <div className="absolute inset-0 bg-gradient-to-t from-secondary via-black/40 to-transparent" />
                     
                     {/* Live / Status Badge */}
-                    {band.members.some(m => m.isRecruiting) && (
+                    {band.members?.some((m: any) => m.isRecruiting) && (
                       <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs border border-border shadow-lg">
                         <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
                         <span className="font-bold text-white tracking-wider">구인 중</span>
@@ -329,7 +331,7 @@ export default function HomePage() {
                   
                   <div className="p-5">
                     <div className="flex gap-2 mb-3 max-w-full overflow-hidden">
-                      {band.members.filter(m => m.isRecruiting).map((m, i) => (
+                      {band.members?.filter((m: any) => m.isRecruiting).map((m: any, i: number) => (
                         <span key={`${m.role}-${i}`} className="px-2.5 py-1 text-[11px] bg-primary/20 text-primary border border-primary/20 rounded-md font-bold uppercase shrink-0">{m.role} 구함</span>
                       ))}
                       <span className="px-2.5 py-1 text-[11px] bg-slate-800 border border-border rounded-md text-slate-300 font-medium shrink-0">{band.frequency} 합주</span>
@@ -337,13 +339,13 @@ export default function HomePage() {
                     
                     <div className="flex items-center gap-2 mb-4 mt-2">
                       <div className="flex -space-x-2">
-                        {band.members.slice(0, 4).map((member, i) => (
+                        {band.members?.slice(0, 4).map((member: any, i: number) => (
                           <div key={`${band.id}-member-${i}`} className="w-8 h-8 rounded-full border-2 border-secondary bg-slate-800 overflow-hidden relative group-hover:z-10 group-hover:ring-2 group-hover:ring-primary transition-all">
                             <img src={`https://i.pravatar.cc/100?u=${band.id}${i}`} alt="Member" className="w-full h-full object-cover" />
                           </div>
                         ))}
                       </div>
-                      <span className="text-xs text-slate-400 font-medium ml-1">{band.members.length}명 멤버</span>
+                      <span className="text-xs text-slate-400 font-medium ml-1">{band.members?.length || 0}명 멤버</span>
                     </div>
 
                     <div className="space-y-2 mb-4">
@@ -353,7 +355,7 @@ export default function HomePage() {
                       </div>
                     </div>
                     
-                    <p className="text-sm text-slate-400 line-clamp-2 leading-relaxed font-light mb-4">"{band.description.split('\n')[0]}"</p>
+                    <p className="text-sm text-slate-400 line-clamp-2 leading-relaxed font-light mb-4">"{band.description?.split('\n')[0] || ""}"</p>
                     
                     <div className="pt-4 border-t border-border/50 flex items-center justify-between mt-auto">
                       <div className="text-xs text-slate-500 font-medium">소통을 시작해보세요!</div>
@@ -433,8 +435,8 @@ export default function HomePage() {
                   </div>
                   <div className="p-4 md:p-5 text-left flex flex-col flex-1 bg-secondary/20">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-5 h-5 rounded-full bg-slate-700 overflow-hidden shrink-0 border border-border">
-                        <img src={`https://picsum.photos/seed/${video.author}/100/100`} alt={video.author} className="w-full h-full object-cover" />
+                      <div className="w-5 h-5 rounded-full bg-slate-800 shrink-0 border border-border flex items-center justify-center overflow-hidden">
+                        <User size={12} className="text-slate-500" />
                       </div>
                       <div className="text-xs font-bold text-primary truncate">{video.author}</div>
                     </div>
@@ -461,7 +463,7 @@ export default function HomePage() {
       <BandPreviewModal 
         isOpen={!!selectedBand} 
         onClose={() => setSelectedBand(null)} 
-        band={selectedBand} 
+        bandProfile={selectedBand} 
       />
 
       {/* Audio Jam Short-form Modal */}

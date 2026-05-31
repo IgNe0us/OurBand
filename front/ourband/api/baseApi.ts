@@ -11,3 +11,65 @@ export const apiClient: AxiosInstance = axios.create({
     baseURL: BASE_URL,
     withCredentials: true
 });
+
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+    failedQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    failedQueue = [];
+};
+
+apiClient.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        const originalRequest = error.config;
+
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            // 방어 코드: 무한 루프 방지 및 refresh 엔드포인트 자체 401 무시
+            if (originalRequest.url.includes('/users/refresh') || originalRequest.url.includes('/users/login')) {
+                return Promise.reject(error);
+            }
+
+            if (isRefreshing) {
+                return new Promise(function(resolve, reject) {
+                    failedQueue.push({ resolve, reject });
+                }).then(token => {
+                    return apiClient(originalRequest);
+                }).catch(err => {
+                    return Promise.reject(err);
+                });
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            try {
+                // 쿠키에 담긴 refresh_token을 이용해 재발급 요청 (withCredentials)
+                await axios.post(`${BASE_URL}/users/refresh`, {}, { withCredentials: true });
+                
+                isRefreshing = false;
+                processQueue(null);
+                
+                // 재발급된 access_token으로 원래 요청 다시 시도
+                return apiClient(originalRequest);
+            } catch (err) {
+                isRefreshing = false;
+                processQueue(err, null);
+                // 리프레시 토큰마저 만료된 경우 (로그아웃 처리)
+                if (typeof window !== 'undefined') {
+                    window.location.href = '/login';
+                }
+                return Promise.reject(err);
+            }
+        }
+
+        return Promise.reject(error);
+    }
+);

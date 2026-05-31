@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Users, Camera, Music2, MapPin, Edit3 } from "lucide-react";
 import { uploadToCloudflare } from "@/lib/cloudflare";
 import { createBandApi } from "@/api/account/userService";
+import toast from "react-hot-toast";
 
 const KOREA_REGIONS: Record<string, string[]> = {
   "전국": [],
@@ -57,7 +58,7 @@ export default function BandCreatePage() {
   // 밴드 창설 완료 핸들러
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bandName.trim()) return alert("밴드 이름을 입력해주세요!");
+    if (!bandName.trim()) return toast.error("밴드 이름을 입력해주세요!");
 
     setIsSubmitting(true);
     try {
@@ -82,11 +83,11 @@ export default function BandCreatePage() {
         logoImageUrl,
       });
 
-      alert(`밴드 '${bandName}' 결성이 완료되었습니다! 🎸`);
+      toast.success(`밴드 '${bandName}' 결성이 완료되었습니다! 🎸`);
       navigate("/profile");
     } catch (error) {
       console.error("밴드 생성 실패:", error);
-      alert("밴드 생성에 실패했습니다. 다시 시도해주세요.");
+      toast.error("밴드 생성에 실패했습니다. 다시 시도해주세요.");
     } finally {
       setIsSubmitting(false);
     }

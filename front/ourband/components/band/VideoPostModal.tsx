@@ -1,10 +1,12 @@
 "use client";
 import { X, Heart, Share2, MessageSquare, Send, Reply, Edit3, Trash2, Check, User, Play } from "lucide-react";
+import { useUserProfile } from "@/store/userProfileContext";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { getUserInfoApi } from '@/api/account/userService';
 import { getBandPostApi, toggleLikeApi, createBandPostCommentApi, updateCommentApi, deleteCommentApi } from '@/api/band/bandService';
+import { useConfirm } from "@/hooks/useConfirm";
 export type VideoPost = {
   id: string | number;
   title: string;
@@ -22,6 +24,8 @@ interface VideoPostModalProps {
 }
 
 export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostModalProps) {
+  const { confirm } = useConfirm();
+  const { openUserProfile } = useUserProfile();
   const [post, setPost] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
@@ -177,7 +181,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
   };
 
   const handleDeleteComment = async (commentId: number) => {
-    if (!confirm("댓글을 삭제하시겠습니까?") || !post) return;
+    if (!await confirm({ message: "댓글을 삭제하시겠습니까?", isDestructive: true }) || !post) return;
     try {
       await deleteCommentApi(bandId || 1, postId!, commentId);
       setPost((prev: any) => {
@@ -211,7 +215,10 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
 
     return (
       <div className={cn("flex gap-3", depth > 0 && "ml-8 pl-4 border-l-2 border-border/40")}>
-        <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-secondary shrink-0 border border-border flex items-center justify-center font-bold text-xs text-white overflow-hidden mt-0.5">
+        <div 
+          className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-secondary shrink-0 border border-border flex items-center justify-center font-bold text-xs text-white overflow-hidden mt-0.5 cursor-pointer"
+          onClick={() => openUserProfile(Number(c.authorId), c.authorName, c.authorProfileImageUrl)}
+        >
           {c.authorProfileImageUrl ? (
             <img src={c.authorProfileImageUrl} alt={c.authorName} className="w-full h-full object-cover" />
           ) : (
@@ -220,8 +227,11 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start">
-            <div className="flex items-baseline gap-2 mb-1">
-              <span className="font-bold text-sm text-white">{c.authorName}</span>
+            <div 
+              className="flex items-baseline gap-2 mb-1 cursor-pointer"
+              onClick={() => openUserProfile(Number(c.authorId), c.authorName, c.authorProfileImageUrl)}
+            >
+              <span className="font-bold text-sm text-white hover:text-primary transition-colors">{c.authorName}</span>
               <span className="text-[10px] text-slate-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
               {c.updatedAt && c.createdAt && c.updatedAt !== c.createdAt && (
                 <span className="text-[10px] text-slate-500 italic">(수정됨)</span>

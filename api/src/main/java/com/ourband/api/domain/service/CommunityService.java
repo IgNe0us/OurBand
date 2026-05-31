@@ -29,7 +29,12 @@ public class CommunityService {
     private final ReportRepository reportRepository;
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
+    private final LikeViewCacheService likeViewCacheService;
+    private final NotificationService notificationService;
 
+    @org.springframework.cache.annotation.Cacheable(value = "popularPosts", 
+        key = "{#boardType, #category, #part, #keyword, #pageable.pageNumber, #pageable.pageSize}", 
+        condition = "#isPopular != null && #isPopular == true")
     @Transactional(readOnly = true)
     public Page<CommunityPostResponseDTO> searchPosts(String boardType, String category, String part, String keyword, Pageable pageable, Long currentUserId, Boolean isPopular) {
         boolean popular = isPopular != null ? isPopular : false;
@@ -38,11 +43,14 @@ public class CommunityService {
         return posts.map(post -> mapToPostResponseDTO(post, currentUserId));
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public CommunityPostResponseDTO getPost(Long postId, Long currentUserId) {
         CommunityPost post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("게시글을 찾을 수 없습니다."));
-        post.setViewCount(post.getViewCount() + 1);
+        
+        // 조회수 증가 (Redis Write-Behind)
+        likeViewCacheService.incrementViewCount("community", postId, currentUserId);
+        
         return mapToPostResponseDTO(post, currentUserId);
     }
 
@@ -155,22 +163,28 @@ public class CommunityService {
         postRepository.delete(post);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public boolean toggleLike(Long postId, Long currentUserId) {
         CommunityPost post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("게시글을 찾을 수 없습니다."));
         
-        boolean isLiked = likeRepository.existsByPostIdAndUserId(postId, currentUserId);
-        if (isLiked) {
-            CommunityPostLike like = likeRepository.findByPostIdAndUserId(postId, currentUserId).get();
-            likeRepository.delete(like);
-            post.setLikeCount(post.getLikeCount() - 1);
-            return false;
-        } else {
-            likeRepository.save(CommunityPostLike.builder().postId(postId).userId(currentUserId).build());
-            post.setLikeCount(post.getLikeCount() + 1);
-            return true;
+        boolean currentDbStatus = likeRepository.existsByPostIdAndUserId(postId, currentUserId);
+        
+        boolean isNowLiked = likeViewCacheService.toggleLike("community", postId, currentUserId, currentDbStatus);
+        
+        if (isNowLiked && !post.getUserId().equals(currentUserId)) {
+            User liker = userRepository.findById(currentUserId).orElse(null);
+            String likerName = liker != null ? liker.getNickname() : "누군가";
+            notificationService.send(
+                    post.getUserId(),
+                    currentUserId,
+                    com.ourband.api.domain.model.NotificationType.POST_LIKE,
+                    postId.toString(),
+                    likerName + "님이 회원님의 커뮤니티 게시글에 좋아요를 눌렀습니다."
+            );
         }
+        
+        return isNowLiked;
     }
 
     @Transactional
@@ -187,6 +201,18 @@ public class CommunityService {
         comment = commentRepository.save(comment);
 
         post.setCommentCount(post.getCommentCount() + 1);
+
+        if (!post.getUserId().equals(currentUserId)) {
+            User commenter = userRepository.findById(currentUserId).orElse(null);
+            String commenterName = commenter != null ? commenter.getNickname() : "누군가";
+            notificationService.send(
+                    post.getUserId(),
+                    currentUserId,
+                    com.ourband.api.domain.model.NotificationType.POST_COMMENT,
+                    postId.toString(),
+                    commenterName + "님이 회원님의 커뮤니티 게시글에 댓글을 달았습니다."
+            );
+        }
 
         return mapToCommentResponseDTO(comment);
     }
@@ -280,7 +306,8 @@ public class CommunityService {
             }
         }
 
-        boolean isLiked = currentUserId != null && likeRepository.existsByPostIdAndUserId(post.getId(), currentUserId);
+        boolean isLiked = currentUserId != null && likeViewCacheService.isLiked("community", post.getId(), currentUserId, 
+            likeRepository.existsByPostIdAndUserId(post.getId(), currentUserId));
 
         // Comments
         List<CommunityPostComment> comments = commentRepository.findByPostId(post.getId());
@@ -349,9 +376,9 @@ public class CommunityService {
                 .content(post.getContent())
                 .mediaUrl(post.getMediaUrl())
                 .mediaType(post.getMediaType())
-                .likeCount(post.getLikeCount())
+                .likeCount(likeViewCacheService.getCachedLikeCount("community", post.getId(), post.getLikeCount()))
                 .commentCount(post.getCommentCount())
-                .viewCount(post.getViewCount())
+                .viewCount(likeViewCacheService.getCachedViewCount("community", post.getId(), post.getViewCount()))
                 .isLikedByCurrentUser(isLiked)
                 .createdAt(post.getCreatedAt())
                 .comments(commentDTOs)

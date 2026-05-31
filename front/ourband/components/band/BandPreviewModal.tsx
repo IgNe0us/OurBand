@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { BandProfileData, BandHistory, getBandPostsApi, BandPostData, createApplicationApi } from "@/api/band/bandService";
 import { getUserInfoApi } from "@/api/account/userService";
 import { useState, useEffect } from "react";
+import { useUserProfile } from "@/store/userProfileContext";
 import { VideoPostModal } from "./VideoPostModal";
 
 interface BandPreviewModalProps {
@@ -23,6 +24,7 @@ export function BandPreviewModal({ isOpen, onClose, bandProfile }: BandPreviewMo
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeVideo, setActiveVideo] = useState<number | string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const { openUserProfile } = useUserProfile();
 
   useEffect(() => {
     if (isOpen) {
@@ -80,6 +82,7 @@ export function BandPreviewModal({ isOpen, onClose, bandProfile }: BandPreviewMo
 
     setIsSubmitting(true);
     try {
+      if (!bandProfile.id) throw new Error("밴드 정보가 없습니다.");
       await createApplicationApi(bandProfile.id, {
         bandMemberId: Number(selectedPosition.id),
         message: applyForm.message
@@ -218,7 +221,7 @@ export function BandPreviewModal({ isOpen, onClose, bandProfile }: BandPreviewMo
                           {videos.map(video => (
                             <div 
                               key={video.id} 
-                              onClick={() => setActiveVideo(video.id)}
+                              onClick={() => setActiveVideo(video.id!)}
                               className="relative aspect-video rounded-xl overflow-hidden bg-slate-900 border border-border group cursor-pointer"
                             >
                               <video src={video.mediaUrl!} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
@@ -261,7 +264,10 @@ export function BandPreviewModal({ isOpen, onClose, bandProfile }: BandPreviewMo
                             member.isRecruiting ? "border-primary/50 text-primary bg-primary/10" : "border-border text-slate-300 bg-secondary"
                           )}>
                             {!member.isRecruiting && (
-                              <div className="w-6 h-6 rounded-full bg-slate-700 overflow-hidden shrink-0 border border-border/50">
+                              <div 
+                                className="w-6 h-6 rounded-full bg-slate-700 overflow-hidden shrink-0 border border-border/50 cursor-pointer"
+                                onClick={() => member.userId && openUserProfile(member.userId, member.memberName, member.profileImageUrl)}
+                              >
                                 {member.profileImageUrl ? (
                                   <img src={member.profileImageUrl} alt={member.memberName} className="w-full h-full object-cover" />
                                 ) : (

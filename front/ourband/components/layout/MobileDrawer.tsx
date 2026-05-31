@@ -7,6 +7,8 @@ import { X, MessageCircle, HeartHandshake, PenTool, User, Search, Music, MapPin,
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { getUserInfoApi } from "@/api/account/userService";
+import { useChatStore } from "@/store/chatStore";
+import { useNotificationStore } from "@/store/notificationStore";
 
 interface MobileDrawerProps {
   isOpen: boolean;
@@ -24,6 +26,8 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
   const location = { pathname: pathname || "/" };
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const totalUnreadCount = useChatStore(state => state.totalUnreadCount);
+  const notificationCount = useNotificationStore(state => state.unreadCount);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem('ourband_isAdmin') === 'true');
@@ -61,11 +65,17 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
           <div className="flex items-center gap-2">
             <Link href="/notifications" onClick={onClose} className="relative p-2 text-slate-400 hover:text-white transition-colors">
               <Bell size={22} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-secondary animate-pulse" />
+              {notificationCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-secondary animate-pulse" />
+              )}
             </Link>
             <Link href="/chat" onClick={onClose} className="relative p-2 text-slate-400 hover:text-white transition-colors mr-2">
               <Send size={22} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full border-2 border-secondary animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
+              {totalUnreadCount > 0 && (
+                <span className="absolute -top-1 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-secondary flex items-center justify-center text-[9px] font-bold text-white shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse">
+                  {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+                </span>
+              )}
             </Link>
             <button onClick={onClose} className="p-2 -mr-2 text-slate-400 hover:text-white transition-colors bg-white/5 rounded-xl">
               <X size={20} />
@@ -151,13 +161,19 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
             </Link>
           )}
           {user ? (
-            <Link href="/profile" onClick={onClose} className="flex items-center gap-3 group">
-              <img 
-                src={user.profilePictureUrl || `https://picsum.photos/seed/user${user.userId || '1'}/100/100`} 
-                alt="My Profile" 
-                className="w-12 h-12 rounded-full border border-border group-hover:border-primary transition-colors object-cover" 
-                referrerPolicy="no-referrer"
-              />
+              <Link href="/profile" onClick={onClose} className="flex items-center gap-3 group">
+                <div className="w-12 h-12 rounded-full border border-border group-hover:border-primary transition-colors overflow-hidden flex items-center justify-center bg-slate-800">
+                  {user.profilePictureUrl ? (
+                    <img 
+                      src={user.profilePictureUrl} 
+                      alt="My Profile" 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <User size={24} className="text-slate-500" />
+                  )}
+                </div>
               <div className="flex flex-col">
                 <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">{user.nickname}</span>
                 <span className="text-xs text-slate-400">@{user.handle || `user_${user.userId || '1'}`}</span>

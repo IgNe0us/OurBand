@@ -6,6 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @SpringBootApplication
 @ConfigurationPropertiesScan
+@org.springframework.scheduling.annotation.EnableScheduling
+@org.springframework.cache.annotation.EnableCaching
 public class ApiApplication {
 
 	public static void main(String[] args) {

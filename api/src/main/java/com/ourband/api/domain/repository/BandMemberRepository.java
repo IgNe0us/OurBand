@@ -16,4 +16,6 @@ public interface BandMemberRepository extends JpaRepository<BandMember, Long> {
     List<BandSimpleDTO> findBandDetailsByUserId(@Param("userId") Long userId);
 
     List<BandMember> findByBandId(Long bandId);
+
+    boolean existsByBandIdAndUserIdAndStatus(Long bandId, Long userId, String status);
 }

@@ -10,6 +10,10 @@ import { motion, AnimatePresence } from "motion/react";
 import { getUserInfoApi } from "@/api/account/userService";
 import { getChatMessagesApi, markRoomAsReadApi, getMyChatRoomsApi, ChatMessageResponseDTO } from "@/api/chat/chatService";
 import { webSocketService } from "@/api/chat/webSocketService";
+import { useChatStore } from "@/store/chatStore";
+import { acceptApplicationApi, rejectApplicationApi } from "@/api/band/bandService";
+import { acceptOfferApi, rejectOfferApi, getReceivedOffersApi, RecruitmentOfferData } from "@/api/recruitment/recruitmentService";
+import { toast } from "react-hot-toast";
 
 export default function ChatIdDynamicPage() {
   const router = useRouter();
@@ -24,7 +28,26 @@ export default function ChatIdDynamicPage() {
   const [status, setStatus] = useState<"pending" | "accepted" | "rejected">(type === "apply" || type === "offer" ? "pending" : "accepted");
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [targetUser, setTargetUser] = useState<{name: string, profileImage: string | null}>({ name: "대화방", profileImage: null });
+  const [offerDetails, setOfferDetails] = useState<RecruitmentOfferData | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (type === "offer" && targetId) {
+      getReceivedOffersApi()
+        .then(offers => {
+          const found = offers.find(o => o.id === Number(targetId));
+          if (found) {
+            setOfferDetails(found);
+            if (found.status !== "PENDING") {
+              toast.error("이미 처리된 제안입니다.");
+              router.replace("/notifications");
+            }
+          }
+        })
+        .catch(err => console.error("Failed to load offer details", err));
+    }
+  }, [type, targetId, router]);
+  const setTotalUnreadCount = useChatStore((state) => state.setTotalUnreadCount);
 
   const scrollToBottom = () => {
     if (scrollRef.current) {
@@ -46,8 +69,11 @@ export default function ChatIdDynamicPage() {
         setCurrentUserId(me.userId);
         await markRoomAsReadApi(roomId);
         
-        // 1. 방 정보 가져오기
+        // 1. 방 정보 가져오기 & 글로벌 안읽은 개수 동기화
         const rooms = await getMyChatRoomsApi().catch(() => []);
+        const totalUnread = rooms.reduce((acc, room) => acc + (room.unreadCount || 0), 0);
+        setTotalUnreadCount(totalUnread);
+        
         const roomInfo = rooms.find(r => r.roomId === roomId);
         if (roomInfo) {
           setTargetUser({
@@ -60,8 +86,8 @@ export default function ChatIdDynamicPage() {
         const msgs = await getChatMessagesApi(roomId);
         setMessages(msgs);
 
-        // 3. 웹소켓 연결
-        webSocketService.connect(roomId, (newMsg: ChatMessageResponseDTO) => {
+        // 3. 웹소켓 방 구독
+        webSocketService.subscribeRoom(roomId, (newMsg: ChatMessageResponseDTO) => {
           setMessages(prev => {
             if (prev.some(m => m.messageId === newMsg.messageId)) return prev;
             return [...prev, newMsg];
@@ -82,9 +108,9 @@ export default function ChatIdDynamicPage() {
     initChat();
 
     return () => {
-      webSocketService.disconnect();
+      webSocketService.unsubscribeRoom();
     };
-  }, [roomId]);
+  }, [roomId, setTotalUnreadCount]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,16 +121,38 @@ export default function ChatIdDynamicPage() {
       setMessage("");
       // 메시지 추가는 웹소켓 구독 콜백에서 처리되므로 여기서 수동으로 추가하지 않습니다.
     } catch (err) {
-      alert("메시지 전송에 실패했습니다.");
+      toast.error("메시지 전송에 실패했습니다.");
     }
   };
 
-  const handleAccept = () => {
-    setStatus("accepted");
+  const handleAccept = async () => {
+    if (!targetId) return;
+    try {
+      if (type === "apply") {
+        await acceptApplicationApi(targetId);
+      } else if (type === "offer") {
+        await acceptOfferApi(targetId);
+      }
+      setStatus("accepted");
+      toast.success("수락되었습니다.", { position: "top-center" });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "수락 처리에 실패했습니다.", { position: "top-center" });
+    }
   };
 
-  const handleReject = () => {
-    setStatus("rejected");
+  const handleReject = async () => {
+    if (!targetId) return;
+    try {
+      if (type === "apply") {
+        await rejectApplicationApi(targetId);
+      } else if (type === "offer") {
+        await rejectOfferApi(targetId);
+      }
+      setStatus("rejected");
+      toast.success("거절되었습니다.", { position: "top-center" });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "거절 처리에 실패했습니다.", { position: "top-center" });
+    }
   };
 
   return (
@@ -145,13 +193,19 @@ export default function ChatIdDynamicPage() {
           >
             <div className="bg-secondary/90 backdrop-blur-lg border border-primary/30 p-4 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                    {type === "apply" ? "새로운 밴드 합류 요청" : "새로운 밴드 영입 제안"}
-                  </h3>
-                  <p className="text-xs text-slate-400">프로필을 확인하고 수락 또는 거절을 선택해주세요.</p>
-                </div>
+                  <div>
+                    <h3 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      {type === "apply" ? "새로운 밴드 합류 요청" : 
+                       type === "offer" && offerDetails ? `${offerDetails.bandName} 밴드 ${offerDetails.position} 포지션으로 영입 제안 되었습니다.` : 
+                       "새로운 밴드 영입 제안"}
+                    </h3>
+                    <p className="text-xs text-slate-400 whitespace-pre-wrap">
+                      {type === "apply" ? "프로필을 확인하고 가입을 수락 또는 거절을 선택해주세요." : 
+                       type === "offer" && offerDetails ? (offerDetails.message || "조건을 확인하고 영입 제안을 수락 또는 거절을 선택해주세요.") : 
+                       "조건을 확인하고 영입 제안을 수락 또는 거절을 선택해주세요."}
+                    </p>
+                  </div>
                 <div className="flex gap-2 shrink-0">
                   <button 
                     onClick={handleReject}
@@ -227,3 +281,4 @@ export default function ChatIdDynamicPage() {
     </div>
   );
 }
+

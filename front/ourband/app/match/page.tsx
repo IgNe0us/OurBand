@@ -6,10 +6,12 @@ import { LayoutContext } from "@/components/layout/AppLayout";
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Filter, X, Check, MapPin, Play, Zap, Menu, Edit3, Video, Send, MessageCircle } from "lucide-react";
-import { cn } from "@/lib/utils";;
+import { Filter, X, Check, MapPin, Play, Zap, Menu, Edit3, Video, Send, MessageCircle, User } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useRouter } from 'next/navigation';
+import { useUserProfile } from "@/store/userProfileContext";
 import type { LayoutContextType } from "@/components/layout/AppLayout";
+import toast from "react-hot-toast";
 
 const MOCK_PROFILES = [
   {
@@ -55,7 +57,8 @@ const MOCK_PROFILES = [
 
 export default function MatchPage() {
   const router = useRouter();
-  const navigate = (path: string) => router.push(path);;
+  const navigate = (path: string) => router.push(path);
+  const { openUserProfile } = useUserProfile();
   const { openMenu } = useContext(LayoutContext);
   const [activeTab, setActiveTab] = useState<"musicians" | "bands">("musicians");
   const [cards, setCards] = useState(MOCK_PROFILES);
@@ -117,7 +120,7 @@ export default function MatchPage() {
             <h1 className="text-3xl font-black tracking-tight text-white drop-shadow-md">디스커버</h1>
           </div>
           <button 
-            onClick={() => alert("필터 모달이 열립니다.")}
+            onClick={() => toast.error("필터 모달이 열립니다.")}
             className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-border text-white hover:bg-white/20 transition-all"
           >
             <Filter size={18} />
@@ -171,7 +174,9 @@ export default function MatchPage() {
                 }}
                 whileDrag={{ scale: 1.05, cursor: "grabbing" }}
               >
-                <img src={`https://picsum.photos/seed/${profile.img}/400/600`} className="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="Profile" referrerPolicy="no-referrer" />
+                <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-slate-800 pointer-events-none">
+                  <User size={80} className="text-slate-500" />
+                </div>
                 
                 {/* Granular Gradients for sleek look */}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/95 pointer-events-none" />
@@ -190,7 +195,7 @@ export default function MatchPage() {
                 {/* Play Button */}
                 <button 
                   onPointerDown={(e) => e.stopPropagation()} 
-                  onClick={() => alert("자기소개 오디오가 재생됩니다.")}
+                  onClick={() => toast.error("자기소개 오디오가 재생됩니다.")}
                   className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full flex items-center justify-center group hover:bg-white/20 transition-all z-10"
                 >
                   <Play fill="currentColor" size={24} className="text-white ml-1.5 drop-shadow-lg group-hover:scale-110 transition-transform" />
@@ -355,7 +360,7 @@ export default function MatchPage() {
 
                 <button 
                   onClick={() => {
-                    alert("성공적으로 등록되었습니다! 주변 매칭 피드에 내 프로필이 노출됩니다.");
+                    toast.success("성공적으로 등록되었습니다! 주변 매칭 피드에 내 프로필이 노출됩니다.");
                     setIsWriteModalOpen(false);
                     setPostText("");
                     setPostTags([]);
@@ -395,8 +400,13 @@ export default function MatchPage() {
               </button>
 
               {/* Profile Image Banner */}
-              <div className="relative w-full h-64 md:h-80 bg-slate-800">
-                <img src={`https://picsum.photos/seed/${matchedProfile.img}/600/600`} className="w-full h-full object-cover" alt="Profile" referrerPolicy="no-referrer" />
+              <div 
+                className="relative w-full h-64 md:h-80 bg-slate-800 cursor-pointer"
+                onClick={() => openUserProfile(matchedProfile.id, matchedProfile.name, "")}
+              >
+                <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-slate-800 pointer-events-none">
+                  <User size={64} className="text-slate-500" />
+                </div>
                 <div className="absolute inset-0 bg-gradient-to-t from-secondary via-transparent to-black/30 pointer-events-none" />
                 
                 <div className="absolute bottom-5 left-6 right-6 flex items-end justify-between">

@@ -1,29 +1,100 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, Clock, CheckCircle2, ChevronRight } from "lucide-react";
+import { Bell, Clock, CheckCircle2, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// Mock Notifications Data
-const INITIAL_NOTIFICATIONS = [
-  { id: 1, type: "apply", text: "신스팝 밴드 네온사인에서 영입 제안이 왔습니다.", time: "10분 전", read: false, link: "/chat/1?type=offer&targetId=1" },
-  { id: 2, type: "system", text: "루비스파크님의 프로필이 주간 인기 톱퍼에 선정되었습니다!", time: "2시간 전", read: true, link: "/profile" },
-  { id: 3, type: "community", text: "회원님의 게시글에 새로운 댓글이 달렸습니다.", time: "어제", read: true, link: "/community/free/1" },
-  { id: 4, type: "jam", text: "베이스깎는노인님이 새로운 오디오잼을 업로드했습니다.", time: "어제", read: true, link: "/jam" },
-];
+import { getNotificationsApi, markNotificationAsReadApi, NotificationData } from "@/api/notification/notificationService";
+import { getReceivedOffersApi, RecruitmentOfferData } from "@/api/recruitment/recruitmentService";
+import { useNotificationStore } from "@/store/notificationStore";
+import { formatDistanceToNow } from "date-fns";
+import { ko } from "date-fns/locale";
+import { toast } from "react-hot-toast";
+import { useRouter } from "next/navigation";
+import { createOrGetRoomApi } from "@/api/chat/chatService";
+import { useUserProfile } from "@/store/userProfileContext";
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const router = useRouter();
+  const [notifications, setNotifications] = useState<NotificationData[]>([]);
+  const [offers, setOffers] = useState<RecruitmentOfferData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const unreadCount = useNotificationStore(state => state.unreadCount);
+  const setGlobalUnreadCount = useNotificationStore(state => state.setUnreadCount);
+  const decrementUnreadCount = useNotificationStore(state => state.decrementUnreadCount);
+  const { openUserProfile } = useUserProfile();
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
 
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+  const fetchNotifications = async () => {
+    try {
+      setIsLoading(true);
+      const [data, offersData] = await Promise.all([
+        getNotificationsApi(),
+        getReceivedOffersApi().catch(() => []) // Silently fail offers if error
+      ]);
+      setNotifications(data);
+      setOffers(offersData);
+      setGlobalUnreadCount(data.filter(n => !n.isRead).length);
+    } catch (err) {
+      console.error("Failed to fetch notifications", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const markAsRead = (id: number) => {
-    setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+  const markAllAsRead = async () => {
+    try {
+      const unreadNotifs = notifications.filter(n => !n.isRead);
+      for (const n of unreadNotifs) {
+        await markNotificationAsReadApi(n.id);
+      }
+      setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+      setGlobalUnreadCount(0);
+    } catch (err) {
+      console.error("Failed to mark all as read", err);
+    }
+  };
+
+  const markAsRead = async (id: number, isRead: boolean) => {
+    if (isRead) return;
+    try {
+      await markNotificationAsReadApi(id);
+      setNotifications(notifications.map(n => n.id === id ? { ...n, isRead: true } : n));
+      decrementUnreadCount();
+    } catch (err) {
+      console.error("Failed to mark as read", err);
+    }
+  };
+
+  const getLinkForNotification = (n: NotificationData) => {
+    switch (n.type) {
+      case "RECRUIT_OFFER": {
+        const match = n.targetId.match(/targetId=(\d+)/);
+        if (match) {
+          const offerId = Number(match[1]);
+          const offer = offers.find(o => o.id === offerId);
+          if (offer && offer.status !== "PENDING") {
+            return null;
+          }
+        }
+        return `/chat/${n.targetId}`; // targetId is roomId with params
+      }
+      case "BAND_APPLY": return `/band/${n.targetId}/board?tab=가입 신청`; // targetId is bandId
+      case "JAM_LIKE":
+      case "JAM_COMMENT":
+      case "JAM_DUET": return `/jam?id=${n.targetId}`;
+      case "POST_LIKE":
+      case "POST_COMMENT": 
+        if (n.content.includes("커뮤니티")) {
+          return `/community/post/${n.targetId}`;
+        }
+        return `/post/${n.targetId}`;
+      case "INFO": return null;
+      default: return null;
+    }
   };
 
   return (
@@ -46,41 +117,111 @@ export default function NotificationsPage() {
 
       {/* Content */}
       <div className="flex-1 p-4 overflow-y-auto space-y-2">
-        {notifications.length > 0 ? notifications.map(notif => (
-          <Link 
+        {isLoading ? (
+          <div className="flex justify-center py-20 text-slate-500">
+             <span className="animate-pulse">로딩 중...</span>
+          </div>
+        ) : notifications.length > 0 ? notifications.map(notif => {
+          const link = getLinkForNotification(notif);
+          const isEmergency = notif.type === "INFO" && notif.targetId === "emergency";
+          const isClickable = link || isEmergency;
+          const ContentWrapper = (link ? Link : "div") as any;
+          return (
+          <ContentWrapper 
             key={notif.id}
-            href={notif.link}
-            onClick={() => markAsRead(notif.id)}
+            {...(link ? { href: link } : {})}
+            onClick={async (e: any) => {
+              if (isEmergency) {
+                e.preventDefault();
+                if (notif.senderId) {
+                  try {
+                    const roomId = await createOrGetRoomApi(notif.senderId);
+                    router.push(`/chat/${roomId}`);
+                    markAsRead(notif.id, notif.isRead);
+                    return;
+                  } catch (err) {
+                    toast.error("채팅방을 열 수 없습니다.");
+                  }
+                }
+              }
+              if (!link && notif.type === "RECRUIT_OFFER") {
+                toast.custom((t) => (
+                  <div
+                    onClick={() => toast.dismiss(t.id)}
+                    style={{
+                      opacity: t.visible ? 1 : 0,
+                      transition: "opacity 300ms ease-in-out",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      borderRadius: "14px",
+                      background: "rgba(15, 23, 42, 0.8)",
+                      backdropFilter: "blur(10px)",
+                      color: "#f8fafc",
+                      border: "1px solid rgba(51, 65, 85, 0.6)",
+                      padding: "12px 20px",
+                      fontSize: "15px",
+                      fontWeight: "500",
+                      boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.4)",
+                    }}
+                  >
+                    <span style={{ fontSize: "16px" }}>ℹ️</span>
+                    <span>이미 처리된 제안입니다.</span>
+                  </div>
+                ), { position: "top-center", duration: 3000 });
+              }
+              markAsRead(notif.id, notif.isRead);
+            }}
             className={cn(
-              "flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-800/50 transition-all border border-transparent hover:border-border group",
-              !notif.read ? "bg-primary/5 border-primary/20" : ""
+              "flex items-center gap-4 p-4 rounded-2xl transition-all border border-transparent group",
+              !notif.isRead ? "bg-primary/5 border-primary/20" : "",
+              !isClickable ? "cursor-default opacity-60" : "hover:bg-slate-800/50 hover:border-border cursor-pointer"
             )}
           >
-            <div className="mt-1 shrink-0">
-              {!notif.read ? (
-                <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(99,102,241,0.8)] animate-pulse" />
-              ) : (
-                <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
-              )}
-            </div>
+            {notif.senderProfileImageUrl ? (
+                <img 
+                  src={notif.senderProfileImageUrl} 
+                  alt={notif.senderName} 
+                  className="w-10 h-10 rounded-full object-cover shrink-0 cursor-pointer" 
+                  referrerPolicy="no-referrer" 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (notif.senderId) openUserProfile(notif.senderId, notif.senderName, notif.senderProfileImageUrl || undefined);
+                  }}
+                />
+            ) : (
+                <div className="mt-1 shrink-0">
+                  {!notif.isRead ? (
+                    <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(99,102,241,0.8)] animate-pulse" />
+                  ) : (
+                    <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                  )}
+                </div>
+            )}
             
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <p className={cn(
-                "text-sm mb-1.5 leading-tight group-hover:text-primary transition-colors", 
-                !notif.read ? "text-white font-bold" : "text-slate-300"
+                "text-sm mb-1.5 leading-tight transition-colors", 
+                !notif.isRead ? "text-white font-bold" : "text-slate-300",
+                link ? "group-hover:text-primary" : ""
               )}>
-                {notif.text}
+                {notif.content}
               </p>
               <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
-                <Clock size={12} /> {notif.time}
+                <Clock size={12} /> {formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true, locale: ko })}
               </span>
             </div>
 
-            <div className="w-8 h-8 shrink-0 rounded-full bg-secondary flex items-center justify-center group-hover:bg-primary transition-colors group-hover:text-white text-slate-400 border border-border group-hover:border-primary">
-              <ChevronRight size={16} />
-            </div>
-          </Link>
-        )) : (
+            {isClickable && (
+              <div className="w-8 h-8 shrink-0 rounded-full bg-secondary flex items-center justify-center group-hover:bg-primary transition-colors group-hover:text-white text-slate-400 border border-border group-hover:border-primary">
+                <ChevronRight size={16} />
+              </div>
+            )}
+          </ContentWrapper>
+          );
+        }) : (
           <div className="flex flex-col items-center justify-center py-20 text-slate-500">
             <Bell size={48} className="mb-4 opacity-50" />
             <p>새로운 알림이 없습니다.</p>
@@ -90,3 +231,6 @@ export default function NotificationsPage() {
     </div>
   );
 }
+
+
+

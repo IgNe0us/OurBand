@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { getMyApplicationsApi, BandApplicationData, getAllBandsApi, BandListData, toggleBandFollowApi, getBandProfileApi, BandProfileData } from "@/api/band/bandService";
 import { getReceivedOffersApi, RecruitmentOfferData, acceptOfferApi, rejectOfferApi } from "@/api/recruitment/recruitmentService";
 import { getUserInfoApi } from "@/api/account/userService";
+import toast from "react-hot-toast";
 
 const KOREA_REGIONS: Record<string, string[]> = {
   "전국": [],
@@ -146,10 +147,10 @@ export default function BandsList() {
     e.stopPropagation();
     try {
       await acceptOfferApi(offerId);
-      alert("영입 제안을 수락했습니다.");
+      toast.success("영입 제안을 수락했습니다.");
       loadStatusData();
     } catch (err: any) {
-      alert(err.response?.data?.message || "수락 처리 실패");
+      toast.success(err.response?.data?.message || "수락 처리 실패");
     }
   };
 
@@ -157,10 +158,10 @@ export default function BandsList() {
     e.stopPropagation();
     try {
       await rejectOfferApi(offerId);
-      alert("영입 제안을 거절했습니다.");
+      toast.error("영입 제안을 거절했습니다.");
       loadStatusData();
     } catch (err: any) {
-      alert(err.response?.data?.message || "거절 처리 실패");
+      toast.error(err.response?.data?.message || "거절 처리 실패");
     }
   };
 
