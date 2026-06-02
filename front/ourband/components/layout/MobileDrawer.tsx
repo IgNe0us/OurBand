@@ -2,11 +2,12 @@
 // @ts-nocheck
 import Link from "next/link";
 
-import { usePathname } from "next/navigation";
-import { X, MessageCircle, HeartHandshake, PenTool, User, Search, Music, MapPin, Home, PlaySquare, AudioWaveform, Settings, Bell, Send } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { usePathname, useRouter } from "next/navigation";
+import { X, MessageCircle, HeartHandshake, PenTool, User, Search, Music, MapPin, Home, PlaySquare, AudioWaveform, Settings, Bell, Send, LogOut } from "lucide-react";
+import { cn, translateInstrument } from "@/lib/utils";
 import { useState, useEffect } from "react";
-import { getUserInfoApi } from "@/api/account/userService";
+import toast from "react-hot-toast";
+import { getUserInfoApi, logoutApi } from "@/api/account/userService";
 import { useChatStore } from "@/store/chatStore";
 import { useNotificationStore } from "@/store/notificationStore";
 
@@ -22,6 +23,7 @@ const COMMUNITY_ITEMS = [
 ];
 
 export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
+  const router = useRouter();
   const pathname = usePathname();
   const location = { pathname: pathname || "/" };
   const [isAdmin, setIsAdmin] = useState(false);
@@ -30,18 +32,29 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
   const notificationCount = useNotificationStore(state => state.unreadCount);
 
   useEffect(() => {
-    setIsAdmin(localStorage.getItem('ourband_isAdmin') === 'true');
     if (isOpen) {
       // 💡 실시간 유저 정보 로드
       getUserInfoApi()
         .then((data) => {
           setUser(data);
+          setIsAdmin(data.type === 'admin');
         })
         .catch((err) => {
           console.error("Failed to load user info in drawer", err);
         });
     }
   }, [isOpen, pathname]);
+
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+      toast.success("안전하게 로그아웃 되었습니다.");
+      onClose();
+      router.push("/login");
+    } catch (err) {
+      toast.error("로그아웃 처리 중 오류가 발생했습니다.");
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -161,8 +174,9 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
             </Link>
           )}
           {user ? (
-              <Link href="/profile" onClick={onClose} className="flex items-center gap-3 group">
-                <div className="w-12 h-12 rounded-full border border-border group-hover:border-primary transition-colors overflow-hidden flex items-center justify-center bg-slate-800">
+            <div className="flex items-center gap-3">
+              <Link href="/profile" onClick={onClose} className="flex items-center gap-3 group flex-1 min-w-0">
+                <div className="w-12 h-12 rounded-full border border-border group-hover:border-primary transition-colors overflow-hidden flex items-center justify-center bg-slate-800 shrink-0">
                   {user.profilePictureUrl ? (
                     <img 
                       src={user.profilePictureUrl} 
@@ -174,11 +188,19 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                     <User size={24} className="text-slate-500" />
                   )}
                 </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">{user.nickname}</span>
-                <span className="text-xs text-slate-400">@{user.handle || `user_${user.userId || '1'}`}</span>
-              </div>
-            </Link>
+                <div className="flex flex-col flex-1 min-w-0">
+                  <span className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">{user.nickname}</span>
+                  <span className="text-xs text-slate-400 truncate">{translateInstrument(user.instrument)}</span>
+                </div>
+              </Link>
+              <button 
+                onClick={handleLogout}
+                className="p-3 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all group shrink-0"
+                title="로그아웃"
+              >
+                <LogOut size={20} className="group-hover:scale-110 transition-transform" />
+              </button>
+            </div>
           ) : (
             <div className="flex items-center gap-3 animate-pulse">
               <div className="w-12 h-12 rounded-full bg-slate-700" />

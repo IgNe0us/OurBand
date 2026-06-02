@@ -11,4 +11,5 @@ public interface BandFollowRepository extends JpaRepository<BandFollow, Long> {
     List<BandFollow> findByUserId(Long userId);
     long countByBandId(Long bandId);
     void deleteAllByBandId(Long bandId);
+    List<BandFollow> findByCreatedAtAfter(java.time.LocalDateTime since);
 }

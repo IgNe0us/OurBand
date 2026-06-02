@@ -8,5 +8,7 @@ public record HistoryCommentResponse(
     String author, // 💡 DB에는 없지만 프론트에 필요한 유저 닉네임
     String profilePictureUrl,
     String content,
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+    Long parentId,
+    java.util.List<HistoryCommentResponse> replies
 ) {}

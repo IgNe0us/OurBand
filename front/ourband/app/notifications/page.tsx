@@ -91,6 +91,9 @@ export default function NotificationsPage() {
         if (n.content.includes("커뮤니티")) {
           return `/community/post/${n.targetId}`;
         }
+        if (n.content.includes("마이페이지")) {
+          return `/profile?historyId=${n.targetId}`;
+        }
         return `/post/${n.targetId}`;
       case "INFO": return null;
       default: return null;

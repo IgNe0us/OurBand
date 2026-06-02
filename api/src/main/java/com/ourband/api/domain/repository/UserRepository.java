@@ -22,4 +22,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * @return Optional<User> 사용자 엔티티
      */
     Optional<User> findByNickname(String nickname);
+
+    /**
+     * 닉네임으로 사용자 목록을 검색합니다. (부분 일치 검색)
+     * @param keyword 검색어
+     * @return List<User> 검색된 사용자 목록
+     */
+    java.util.List<User> findByNicknameContainingIgnoreCase(String keyword);
 }

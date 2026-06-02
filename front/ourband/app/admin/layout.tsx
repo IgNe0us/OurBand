@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
+import { getUserInfoApi } from "@/api/account/userService";
+
 const TABS = [
   { id: "overview", path: "/admin", label: "대시보드 홈", icon: LayoutIcon },
   { id: "users", path: "/admin/users", label: "회원 관리", icon: Users },
@@ -22,12 +24,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const adminStatus = localStorage.getItem('ourband_isAdmin') === 'true';
-    setIsAdmin(adminStatus);
-    if (!adminStatus) {
-      toast.error("관리자 권한이 필요합니다.");
-      router.push("/");
-    }
+    getUserInfoApi()
+      .then((data) => {
+        const adminStatus = data.type === 'admin';
+        setIsAdmin(adminStatus);
+        if (!adminStatus) {
+          toast.error("관리자 권한이 필요합니다.");
+          router.push("/");
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load user info in admin layout", err);
+        setIsAdmin(false);
+        toast.error("로그인이 필요합니다.");
+        router.push("/");
+      });
   }, [router]);
 
   if (isAdmin === null) return null;

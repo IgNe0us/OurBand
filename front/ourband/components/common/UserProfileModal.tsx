@@ -6,8 +6,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AudioJamModal, type PopularJamVideo } from "../jam/AudioJamModal";
-import { cn } from "@/lib/utils";
-import { getUserProfileApi, toggleFollowApi } from "@/api/account/userService";
+import { cn, translateInstrument } from "@/lib/utils";
+import { getUserProfileApi, toggleFollowApi, getUserInfoApi } from "@/api/account/userService";
 import { createOrGetRoomApi } from "@/api/chat/chatService";
 import toast from "react-hot-toast";
 
@@ -19,20 +19,28 @@ interface UserProfileModalProps {
   userImage?: string;
 }
 
-export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유저 이름", userImage }: UserProfileModalProps) {
+export function UserProfileModal({ isOpen, onClose, userId = 1, userName, userImage }: UserProfileModalProps) {
   const router = useRouter();
   const navigate = (path: string) => router.push(path);
-  const [selectedActivity, setSelectedActivity] = useState<PopularJamVideo | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
   
   const [profileData, setProfileData] = useState<any>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loggedInUserId, setLoggedInUserId] = useState<number | null>(null);
 
   useEffect(() => {
     if (isOpen && userId) {
       const fetchProfile = async () => {
         setLoading(true);
         try {
+          try {
+            const loggedInUser = await getUserInfoApi();
+            setLoggedInUserId(loggedInUser.userId);
+          } catch (e) {
+            // not logged in
+          }
+
           const data = await getUserProfileApi(Number(userId));
           setProfileData(data);
           // 💡 Ensure isFollowing state reflects the API response if it exists in the DTO
@@ -68,7 +76,7 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
     <>
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -110,37 +118,39 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
                 )}
               </div>
               
-              <div className="flex justify-end gap-2 w-full mb-6 relative z-10 -mt-8">
-                <button 
-                  onClick={handleToggleFollow}
-                  className={cn(
-                    "px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-lg flex items-center gap-1.5",
-                    isFollowing
-                      ? "bg-secondary border border-border text-white hover:bg-slate-800 shadow-none"
-                      : "bg-primary text-white hover:bg-indigo-600 shadow-primary/20"
-                  )}
-                >
-                  {isFollowing ? (
-                    <><UserCheck size={16} /> 언팔로우</>
-                  ) : (
-                    <><UserPlus size={16} /> 팔로우</>
-                  )}
-                </button>
-                <button 
-                  onClick={async () => {
-                    try {
-                      const roomId = await createOrGetRoomApi(Number(userId));
-                      onClose();
-                      navigate(`/chat/${roomId}`);
-                    } catch (e) {
-                      toast.error("채팅방을 열 수 없습니다.");
-                    }
-                  }}
-                  className="bg-secondary border border-border hover:bg-slate-800 text-white p-2 rounded-xl text-sm font-bold transition-colors flex items-center justify-center"
-                >
-                  <MessageCircle size={18} />
-                </button>
-              </div>
+              {Number(userId) !== loggedInUserId && (
+                <div className="flex justify-end gap-2 w-full mb-6 relative z-10 -mt-8">
+                  <button 
+                    onClick={handleToggleFollow}
+                    className={cn(
+                      "px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-lg flex items-center gap-1.5",
+                      isFollowing
+                        ? "bg-secondary border border-border text-white hover:bg-slate-800 shadow-none"
+                        : "bg-primary text-white hover:bg-indigo-600 shadow-primary/20"
+                    )}
+                  >
+                    {isFollowing ? (
+                      <><UserCheck size={16} /> 언팔로우</>
+                    ) : (
+                      <><UserPlus size={16} /> 팔로우</>
+                    )}
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const roomId = await createOrGetRoomApi(Number(userId));
+                        onClose();
+                        navigate(`/chat/${roomId}`);
+                      } catch (e) {
+                        toast.error("채팅방을 열 수 없습니다.");
+                      }
+                    }}
+                    className="bg-secondary border border-border hover:bg-slate-800 text-white p-2 rounded-xl text-sm font-bold transition-colors flex items-center justify-center"
+                  >
+                    <MessageCircle size={20} />
+                  </button>
+                </div>
+              )}
 
               <h3 
                 className="text-2xl font-black text-white mb-1 cursor-pointer hover:text-primary transition-colors flex items-center gap-2 w-fit"
@@ -149,11 +159,11 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
                   navigate(`/profile/${userId}`);
                 }}
               >
-                {userName || profileData?.nickname}
+                {userName || profileData?.nickname || "유저 이름"}
               </h3>
               
               {profileData?.instrument ? (
-                <p className="text-sm text-primary font-bold mb-3">{profileData.instrument}</p>
+                <p className="text-sm text-primary font-bold mb-3">{translateInstrument(profileData.instrument)}</p>
               ) : (
                 <p className="text-sm text-slate-500 font-medium mb-3">포지션 미설정</p>
               )}
@@ -187,27 +197,38 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
                   {profileData?.histories && profileData.histories.length > 0 ? (
                     <div className="flex flex-row overflow-x-auto gap-3 pb-2 hide-scrollbar">
                       {profileData.histories.slice(0, 3).map((history: any) => (
-                        <div 
-                          key={history.id}
-                          onClick={() => setSelectedActivity(history)}
-                          className="p-3 bg-secondary border border-border rounded-xl cursor-pointer hover:border-slate-600 transition-colors w-48 shrink-0 flex flex-col"
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded shrink-0">
-                              {history.mediaType === 'VIDEO' ? '비디오' : '포스트'}
-                            </span>
-                            <span className="text-[10px] text-slate-500 whitespace-nowrap">
-                              {new Date(history.createdAt).toLocaleDateString()}
-                            </span>
+                          <div 
+                            key={history.id}
+                            onClick={() => setSelectedActivity(history)}
+                            className="bg-secondary/40 border border-border rounded-2xl overflow-hidden hover:border-primary/50 transition-colors group flex flex-col relative shrink-0 w-32 md:w-36 cursor-pointer" 
+                          >
+                            <div className="relative overflow-hidden bg-slate-800 shrink-0 aspect-[3/4]">
+                              {history.mediaUrl ? (
+                                history.mediaType?.toUpperCase() === "VIDEO" ? (
+                                  <video src={history.mediaUrl} className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" preload="metadata" muted playsInline />
+                                ) : (
+                                  <img src={history.mediaUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-70 group-hover:opacity-100" alt="history" referrerPolicy="no-referrer" />
+                                )
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-slate-800 opacity-50">
+                                  <History size={32} className="text-slate-500" />
+                                </div>
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent group-hover:bg-black/40 transition-colors" />
+                              {history.mediaType?.toUpperCase() === "VIDEO" && (
+                                <div className="absolute inset-0 flex items-center justify-center p-4">
+                                  <div className="w-8 h-8 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 group-hover:bg-primary group-hover:border-primary group-hover:scale-110 transition-all shadow-lg">
+                                    <Play size={12} className="ml-0.5" fill="currentColor" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="p-3 text-left flex flex-col flex-1 bg-secondary/20">
+                              <h4 className="text-xs font-bold text-white mb-1 line-clamp-1 group-hover:text-primary transition-colors leading-snug">{history.title}</h4>
+                              <p className="text-[10px] text-slate-400 line-clamp-1">{history.content}</p>
+                            </div>
                           </div>
-                          <h5 className="text-sm font-bold text-white mb-1 line-clamp-1">{history.title}</h5>
-                          <p className="text-xs text-slate-400 line-clamp-2 mb-3 flex-1">{history.content}</p>
-                          <div className="flex items-center gap-3 text-xs text-slate-500 mt-auto">
-                            <span className="flex items-center gap-1"><ThumbsUp size={12}/> {history.likeCount || 0}</span>
-                            <span className="flex items-center gap-1"><MessageCircle size={12}/> {history.commentCount || 0}</span>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   ) : (
                     <div className="text-sm text-slate-500 bg-secondary/30 p-4 rounded-xl border border-border/50 text-center">
@@ -298,10 +319,21 @@ export function UserProfileModal({ isOpen, onClose, userId = 1, userName = "유�
     <AudioJamModal 
       isOpen={!!selectedActivity} 
       onClose={() => setSelectedActivity(null)} 
-      post={selectedActivity} 
+      post={selectedActivity ? {
+        id: String(selectedActivity.id),
+        title: selectedActivity.title,
+        thumbnail: selectedActivity.mediaUrl || "https://picsum.photos/seed/default/600/800", 
+        description: selectedActivity.content, 
+        likes: selectedActivity.likeCount,
+        date: "방금 전",
+        likedByMe: selectedActivity.likedByMe, 
+        sharesCount: selectedActivity.shareCount,
+        author: userName || profileData?.nickname || "유저 이름",
+        authorAvatar: userImage || profileData?.profilePictureUrl,
+        type: selectedActivity.mediaType?.toUpperCase() === "VIDEO" ? "video" : "post"
+      } : null as any} 
       isHistory={true}
     />
     </>
   );
 }
-

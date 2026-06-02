@@ -23,6 +23,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.HttpHeaders;
 import com.ourband.api.domain.dto.user.UserProfileResponseDTO;
+import com.ourband.api.domain.dto.user.UserSearchResponseDTO;
 
 import java.util.HashMap;
 import java.util.List;
@@ -315,6 +316,29 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    // 관심 멤버 찜하기/언찜하기 토글 API
+    @PostMapping("/favorite-members/{targetUserId}")
+    public ResponseEntity<Map<String, Boolean>> toggleFavoriteMember(
+            @CookieValue("access_token") String accessToken,
+            @PathVariable("targetUserId") Long targetUserId) {
+        Long userId = jwtUtil.getUserId(accessToken);
+        boolean isFavorite = userService.toggleFavoriteMember(userId, targetUserId);
+        return ResponseEntity.ok(Map.of("isFavorite", isFavorite));
+    }
+
+    // 내 관심 멤버 ID 목록 조회 API
+    @GetMapping("/favorite-members")
+    public ResponseEntity<List<Long>> getFavoriteMembers(
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        if (accessToken == null) return ResponseEntity.ok(List.of());
+        try {
+            Long userId = jwtUtil.getUserId(accessToken);
+            return ResponseEntity.ok(userService.getFavoriteMemberIds(userId));
+        } catch (Exception e) {
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
     // 유저 프로필 기어 생성 API
     @PostMapping("/gear")
     public ResponseEntity<GearSimpleDTO> addGear(
@@ -381,11 +405,36 @@ public class UserController {
     @PostMapping("/history/{historyId}/comments")
     public ResponseEntity<HistoryCommentResponse> addComment(
             @PathVariable("historyId") Long historyId,
+            @RequestBody Map<String, Object> body,
+            @CookieValue("access_token") String token) {
+        Long userId = jwtUtil.getUserId(token);
+        String content = (String) body.get("content");
+        Long parentId = body.get("parentId") != null ? Long.valueOf(body.get("parentId").toString()) : null;
+        HistoryCommentResponse response = userService.addComment(userId, historyId, content, parentId);
+        return ResponseEntity.ok(response);
+    }
+
+    // 댓글 수정 API
+    @PutMapping("/history/{historyId}/comments/{commentId}")
+    public ResponseEntity<HistoryCommentResponse> updateComment(
+            @PathVariable("historyId") Long historyId,
+            @PathVariable("commentId") Long commentId,
             @RequestBody Map<String, String> body,
             @CookieValue("access_token") String token) {
         Long userId = jwtUtil.getUserId(token);
-        HistoryCommentResponse response = userService.addComment(userId, historyId, body.get("content"));
+        HistoryCommentResponse response = userService.updateComment(commentId, userId, body.get("content"));
         return ResponseEntity.ok(response);
+    }
+
+    // 댓글 삭제 API
+    @DeleteMapping("/history/{historyId}/comments/{commentId}")
+    public ResponseEntity<Void> deleteComment(
+            @PathVariable("historyId") Long historyId,
+            @PathVariable("commentId") Long commentId,
+            @CookieValue("access_token") String token) {
+        Long userId = jwtUtil.getUserId(token);
+        userService.deleteComment(commentId, userId);
+        return ResponseEntity.ok().build();
     }
 
     //게시글 공유 카운트 상승
@@ -393,6 +442,26 @@ public class UserController {
     public ResponseEntity<Void> increaseShare(@PathVariable("historyId") Long historyId) {
         userService.increaseShareCount(historyId);
         return ResponseEntity.ok().build();
+    }
+
+    // ========================================
+    // 💡 유저 검색 API
+    // ========================================
+
+    @GetMapping("/search")
+    public ResponseEntity<List<UserSearchResponseDTO>> searchUsers(
+            @RequestParam("keyword") String keyword,
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        
+        Long currentUserId = null;
+        if (accessToken != null && !accessToken.isEmpty()) {
+            try {
+                currentUserId = jwtUtil.getUserId(accessToken);
+            } catch (Exception ignored) {}
+        }
+        
+        List<UserSearchResponseDTO> results = userService.searchUsers(keyword, currentUserId);
+        return ResponseEntity.ok(results);
     }
 
     // ========================================
@@ -436,6 +505,52 @@ public class UserController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "유효하지 않은 토큰입니다."));
+        }
+    }
+
+    /**
+     * 특정 사용자를 팔로우하는 사람 목록 (타겟 팔로워 리스트)
+     */
+    @GetMapping("/{userId}/followers")
+    public ResponseEntity<?> getUserFollowers(
+            @PathVariable("userId") Long targetUserId,
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        try {
+            Long currentUserId = null;
+            if (accessToken != null && !accessToken.isEmpty()) {
+                try {
+                    currentUserId = jwtUtil.getUserId(accessToken);
+                } catch (Exception ignored) {
+                }
+            }
+            List<com.ourband.api.domain.dto.user.FollowUserDTO> followers = userService.getFollowers(currentUserId, targetUserId);
+            return ResponseEntity.ok(followers);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "오류가 발생했습니다."));
+        }
+    }
+
+    /**
+     * 특정 사용자가 팔로우하는 사람 목록 (타겟 팔로잉 리스트)
+     */
+    @GetMapping("/{userId}/followings")
+    public ResponseEntity<?> getUserFollowings(
+            @PathVariable("userId") Long targetUserId,
+            @CookieValue(value = "access_token", required = false) String accessToken) {
+        try {
+            Long currentUserId = null;
+            if (accessToken != null && !accessToken.isEmpty()) {
+                try {
+                    currentUserId = jwtUtil.getUserId(accessToken);
+                } catch (Exception ignored) {
+                }
+            }
+            List<com.ourband.api.domain.dto.user.FollowUserDTO> followings = userService.getFollowings(currentUserId, targetUserId);
+            return ResponseEntity.ok(followings);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "오류가 발생했습니다."));
         }
     }
 

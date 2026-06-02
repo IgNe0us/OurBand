@@ -6,13 +6,14 @@ import { usePathname } from 'next/navigation';
 import { getUserInfoApi } from '@/api/account/userService';
 import { getUnreadNotificationCountApi, getNotificationSubscribeUrl, NotificationData } from '@/api/notification/notificationService';
 import { useNotificationStore } from '@/store/notificationStore';
-import { toast } from 'react-hot-toast'; // Assuming react-hot-toast is used, let's check package.json later. Or fallback to standard alert.
+import { toast } from 'react-hot-toast'; 
 
 export function GlobalNotificationListener() {
   const pathname = usePathname();
   const setUnreadCount = useNotificationStore((state) => state.setUnreadCount);
   const incrementUnreadCount = useNotificationStore((state) => state.incrementUnreadCount);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const activeTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -33,12 +34,21 @@ export function GlobalNotificationListener() {
         // 3. Connect SSE
         const token = document.cookie.replace(/(?:(?:^|.*;\s*)access_token\s*\=\s*([^;]*).*$)|^.*$/, "$1");
         
-        if (!token) return;
-
-        const url = `${getNotificationSubscribeUrl()}?token=${token}`; // Assuming we pass token in URL or we can rely on withCredentials
+        if (!token) {
+            console.error("SSE: No token found in cookies");
+            return;
+        }
         
-        // Use EventSource (Note: native EventSource withCredentials sends cookies)
-        const eventSource = new EventSource(getNotificationSubscribeUrl(), {
+        // Prevent reconnecting if token hasn't changed
+        if (activeTokenRef.current === token && eventSourceRef.current) return;
+        if (eventSourceRef.current) eventSourceRef.current.close();
+
+        activeTokenRef.current = token;
+
+        const url = `${getNotificationSubscribeUrl()}?token=${token}`; 
+        console.log("SSE: Connecting to", url, "Pathname:", pathname);
+        
+        const eventSource = new EventSource(url, {
             withCredentials: true 
         });
 
@@ -109,7 +119,7 @@ export function GlobalNotificationListener() {
           eventSourceRef.current.close();
       }
     };
-  }, [setUnreadCount, incrementUnreadCount]);
+  }, [setUnreadCount, incrementUnreadCount, pathname]);
 
   return null;
 }

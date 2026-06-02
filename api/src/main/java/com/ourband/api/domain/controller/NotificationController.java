@@ -21,8 +21,17 @@ public class NotificationController {
     private final JwtUtil jwtUtil;
 
     @GetMapping(value = "/subscribe", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter subscribe(@CookieValue(value = "access_token") String accessToken) {
-        Long userId = jwtUtil.getUserId(accessToken);
+    public SseEmitter subscribe(
+            @CookieValue(value = "access_token", required = false) String cookieToken,
+            @RequestParam(value = "token", required = false) String queryToken
+    ) {
+        String token = cookieToken != null ? cookieToken : queryToken;
+        if (token == null) {
+            System.out.println("[NotificationController] Missing token in /subscribe");
+            throw new IllegalArgumentException("Missing token");
+        }
+        Long userId = jwtUtil.getUserId(token);
+        System.out.println("[NotificationController] Subscribing user: " + userId);
         return notificationService.subscribe(userId);
     }
 

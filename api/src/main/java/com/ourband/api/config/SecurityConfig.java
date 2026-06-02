@@ -88,7 +88,9 @@ public class SecurityConfig {
         // 💡 모든 로컬 주소를 다 넣어버리자!
         config.setAllowedOriginPatterns(List.of(
             "http://localhost:3000",
-            "http://127.0.0.1:3000"
+            "http://127.0.0.1:3000",
+            "http://*:3000",
+            "http://121.154.5.172:3000"
         ));
         
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));

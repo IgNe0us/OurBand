@@ -2,7 +2,12 @@ import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import Cookies from 'js-cookie';
 
-const WS_URL = 'http://localhost:8082/ws-chat';
+const WS_URL = typeof window !== 'undefined' 
+  ? `http://${window.location.hostname}:8082/ws-chat` 
+  : 'http://localhost:8082/ws-chat';
+const BROKER_URL = typeof window !== 'undefined' 
+  ? `ws://${window.location.hostname}:8082/ws-chat/websocket` 
+  : 'ws://localhost:8082/ws-chat/websocket';
 
 class WebSocketService {
   private client: Client | null = null;
@@ -17,7 +22,7 @@ class WebSocketService {
     const token = Cookies.get('access_token');
     
     this.client = new Client({
-      brokerURL: 'ws://localhost:8082/ws-chat/websocket', // Use native WebSocket directly
+      brokerURL: BROKER_URL, // Use native WebSocket directly
       ...(token ? { connectHeaders: { Authorization: `Bearer ${token}` } } : {}),
       debug: (str) => {
         // console.log("STOMP: " + str);

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";;
 
 const NAV_ITEMS = [
   { path: "/", label: "트렌드", icon: Home },
+  { path: "/users", label: "뮤지션", icon: User },
   { path: "/match", label: "매칭", icon: Search },
   { path: "/bands", label: "밴드", icon: Users },
   { path: "/band", label: "멤버 찾기", icon: UserPlus },

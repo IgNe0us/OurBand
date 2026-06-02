@@ -13,6 +13,8 @@ public class UserProfileResponseDTO {
     private Long userId;
     private String nickname;
     private String handle; // @아이디
+    private String type; // admin, user 등
+    
     
     // 2. 프로필 정보 (profile 테이블)
     private Integer level;
@@ -29,6 +31,7 @@ public class UserProfileResponseDTO {
     private int bandCount; // 소속 밴드 수 (참여 잼 수)
     
     // 5. 로그인 유저와의 관계
+    @com.fasterxml.jackson.annotation.JsonProperty("isFollowing")
     private boolean isFollowing;
     
     // 4. 리스트 데이터 (별도 테이블들)

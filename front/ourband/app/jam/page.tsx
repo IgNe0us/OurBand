@@ -211,7 +211,7 @@ function JamVideoItem({
                   <Plus size={14} className="text-white" />
                 </motion.button>
               )}
-              {v.userId !== currentUserId && followingMap[v.authorName] && (
+              {/* {v.userId !== currentUserId && followingMap[v.authorName] && (
                 <motion.div 
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -220,7 +220,7 @@ function JamVideoItem({
                 >
                   <Check size={14} className="text-white" />
                 </motion.div>
-              )}
+              )} */}
             </AnimatePresence>
           </div>
           

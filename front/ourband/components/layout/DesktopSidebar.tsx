@@ -2,16 +2,18 @@
 // @ts-nocheck
 import Link from "next/link";
 
-import { usePathname } from "next/navigation";
-import { Home, Search, Music, MapPin, User, MessageCircle, Mic2, HeartHandshake, PenTool, Users, PlaySquare, UserPlus, AudioWaveform, Settings, Bell, Send } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { usePathname, useRouter } from "next/navigation";
+import { Home, Search, Music, MapPin, User, MessageCircle, Mic2, HeartHandshake, PenTool, Users, PlaySquare, UserPlus, AudioWaveform, Settings, Bell, Send, LogOut } from "lucide-react";
+import { cn, translateInstrument } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import { getUserInfoApi } from "@/api/account/userService";
+import toast from "react-hot-toast";
+import { getUserInfoApi, logoutApi } from "@/api/account/userService";
 import { useChatStore } from "@/store/chatStore";
 import { useNotificationStore } from "@/store/notificationStore";
 
 const NAV_ITEMS = [
   { path: "/", label: "트렌드", icon: Home },
+  { path: "/users", label: "뮤지션 찾기", icon: User },
   { path: "/match", label: "주변매칭", icon: Search },
   { path: "/jam", label: "오디오잼", icon: Music },
   { path: "/studio", label: "합주실", icon: MapPin },
@@ -26,6 +28,7 @@ const COMMUNITY_ITEMS = [
 ];
 
 export function DesktopSidebar() {
+  const router = useRouter();
   const pathname = usePathname();
   const location = { pathname: pathname || "/" };
   const [isAdmin, setIsAdmin] = useState(false);
@@ -34,17 +37,26 @@ export function DesktopSidebar() {
   const notificationCount = useNotificationStore(state => state.unreadCount);
 
   useEffect(() => {
-    setIsAdmin(localStorage.getItem('ourband_isAdmin') === 'true');
-    
     // 💡 실시간 유저 정보 로드
     getUserInfoApi()
       .then((data) => {
         setUser(data);
+        setIsAdmin(data.type === 'admin');
       })
       .catch((err) => {
         console.error("Failed to load user info in sidebar", err);
       });
   }, [pathname]);
+
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+      toast.success("안전하게 로그아웃 되었습니다.");
+      router.push("/login");
+    } catch (err) {
+      toast.error("로그아웃 처리 중 오류가 발생했습니다.");
+    }
+  };
 
   return (
     <aside className="hidden md:flex flex-col w-64 lg:w-72 h-screen fixed left-0 top-0 bg-secondary border-r border-border z-40 overflow-y-auto">
@@ -171,24 +183,33 @@ export function DesktopSidebar() {
                 )}
               </Link>
             </div>
-            <Link href="/profile" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-full border border-border group-hover:border-primary transition-colors overflow-hidden shrink-0 flex items-center justify-center bg-slate-800">
-                {user.profilePictureUrl ? (
-                  <img 
-                    src={user.profilePictureUrl} 
-                    alt="My Profile" 
-                    className="w-full h-full object-cover" 
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <User size={20} className="text-slate-500" />
-                )}
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">{user.nickname}</span>
-                <span className="text-xs text-slate-400 truncate">@{user.handle || `user_${user.userId || '1'}`}</span>
-              </div>
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/profile" className="flex items-center gap-3 group flex-1 min-w-0">
+                <div className="w-10 h-10 rounded-full border border-border group-hover:border-primary transition-colors overflow-hidden shrink-0 flex items-center justify-center bg-slate-800">
+                  {user.profilePictureUrl ? (
+                    <img 
+                      src={user.profilePictureUrl} 
+                      alt="My Profile" 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <User size={20} className="text-slate-500" />
+                  )}
+                </div>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">{user.nickname}</span>
+                  <span className="text-xs text-slate-400 truncate">{translateInstrument(user.instrument)}</span>
+                </div>
+              </Link>
+              <button 
+                onClick={handleLogout}
+                className="p-2.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all group shrink-0"
+                title="로그아웃"
+              >
+                <LogOut size={18} className="group-hover:scale-110 transition-transform" />
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex items-center gap-3 animate-pulse">

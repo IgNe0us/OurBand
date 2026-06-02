@@ -24,6 +24,10 @@ public class BandListResponseDTO {
     private boolean isFollowed;
     private long followerCount;
     private LocalDateTime createdAt;
+    private String latestVideoUrl;
+    private Long leaderId;
+    private String leaderProfileImageUrl;
+    private List<String> memberProfileUrls;
 
     @Getter
     @Setter

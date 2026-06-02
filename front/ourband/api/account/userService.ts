@@ -78,6 +78,18 @@ export const deleteFavoriteMusicApi = async (musicId: number) => {
   return await apiClient.delete(`/users/favorite-music/${musicId}`);
 };
 
+// 관심 멤버 찜하기 토글 API 호출
+export const toggleFavoriteMemberApi = async (targetUserId: number): Promise<{ isFavorite: boolean }> => {
+  const response = await apiClient.post(`/users/favorite-members/${targetUserId}`);
+  return response.data;
+};
+
+// 내 관심 멤버 목록 조회 API 호출
+export const getFavoriteMembersApi = async (): Promise<number[]> => {
+  const response = await apiClient.get('/users/favorite-members');
+  return response.data;
+};
+
 // 유저 장비 추가 API 호출
 export const addGearApi = async (gearName: string) => {
     const response = await apiClient.post('/users/gear', { gearName })
@@ -105,10 +117,21 @@ export const toggleHistoryLikeApi = async (historyId: string | number, isLike: b
   await apiClient.post(`/users/history/${historyId}/like?status=${isLike ? 'like' : 'unlike'}`, {});
 };
 
-// 히스토리 상세 유저 댓글 기능
-export const addHistoryCommentApi = async (historyId: string | number, content: string) => {
-  const response = await apiClient.post(`/users/history/${historyId}/comments`, { content });
+// 히스토리 상세 유저 댓글 기능 (대댓글 지원)
+export const addHistoryCommentApi = async (historyId: string | number, content: string, parentId?: string | number | null) => {
+  const response = await apiClient.post(`/users/history/${historyId}/comments`, { content, parentId });
   return response.data;
+};
+
+// 히스토리 댓글 수정
+export const updateHistoryCommentApi = async (historyId: string | number, commentId: string | number, content: string) => {
+  const response = await apiClient.put(`/users/history/${historyId}/comments/${commentId}`, { content });
+  return response.data;
+};
+
+// 히스토리 댓글 삭제
+export const deleteHistoryCommentApi = async (historyId: string | number, commentId: string | number) => {
+  await apiClient.delete(`/users/history/${historyId}/comments/${commentId}`);
 };
 
 // 히스토리 상세 유저 좋아요 기능
@@ -141,6 +164,18 @@ export const getFollowingsApi = async (): Promise<FollowUser[]> => {
   return response.data;
 };
 
+// 특정 사용자 팔로우하는 사람 목록
+export const getUserFollowersApi = async (userId: number): Promise<FollowUser[]> => {
+  const response = await apiClient.get(`/users/${userId}/followers`);
+  return response.data;
+};
+
+// 특정 사용자가 팔로우하는 사람 목록
+export const getUserFollowingsApi = async (userId: number): Promise<FollowUser[]> => {
+  const response = await apiClient.get(`/users/${userId}/followings`);
+  return response.data;
+};
+
 // 팔로우 / 언팔로우 토글
 export const toggleFollowApi = async (targetUserId: number): Promise<{ isFollowing: boolean }> => {
   const response = await apiClient.post(`/users/follow/${targetUserId}`);
@@ -161,5 +196,23 @@ export type BandCreateRequest = {
 
 export const createBandApi = async (data: BandCreateRequest) => {
   const response = await apiClient.post('/users/band', data);
+  return response.data;
+};
+
+// ========================================
+// 💡 뮤지션 검색 API
+// ========================================
+
+export type UserSearchResult = {
+  userId: number;
+  nickname: string;
+  profilePictureUrl: string | null;
+  instrument: string | null;
+  location: string | null;
+  isFollowing: boolean;
+};
+
+export const searchUsersApi = async (keyword: string): Promise<UserSearchResult[]> => {
+  const response = await apiClient.get(`/users/search?keyword=${encodeURIComponent(keyword)}`);
   return response.data;
 };

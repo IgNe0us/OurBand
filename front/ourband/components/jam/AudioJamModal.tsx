@@ -1,13 +1,14 @@
 "use client";
 // @ts-nocheck
-import { Play, Heart, MessageCircle, Share2, Plus, X, Send, Check, User } from "lucide-react";
+import { Play, Heart, MessageCircle, Share2, Plus, X, Send, Check, User, Volume2, VolumeX } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { VideoPost } from "../band/VideoPostModal";
-import { addHistoryCommentApi, increaseHistoryShareApi, toggleHistoryLikeApi } from "@/api/account/userService";
+import { addHistoryCommentApi, updateHistoryCommentApi, deleteHistoryCommentApi, increaseHistoryShareApi, toggleHistoryLikeApi, getUserInfoApi } from "@/api/account/userService";
 import { apiClient } from "@/api/baseApi";
 import { useUserProfile } from "@/store/userProfileContext";
+import { toggleJamLikeApi, getJamCommentsApi, createJamCommentApi, updateJamCommentApi, deleteJamCommentApi, incrementJamShareApi } from "@/api/jam/jamService";
 
 export type PopularJamVideo = VideoPost & { 
   likes?: number; 
@@ -27,6 +28,8 @@ interface AudioJamModalProps {
   onClose: () => void;
   post: PopularJamVideo | null;
   isHistory?: boolean;
+  isJam?: boolean;
+  onUpdatePost?: (updatedPost: Partial<PopularJamVideo>) => void;
 }
 
 // 💡 서버에서 온 ISO 날짜 문자열을 인간이 읽기 쉬운 상대 시간으로 변환하는 함수
@@ -54,20 +57,26 @@ const formatRelativeTime = (dateString: string) => {
   });
 };
 
-export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: AudioJamModalProps) {
+export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam = false, onUpdatePost }: AudioJamModalProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [localLikes, setLocalLikes] = useState(0);
   const [localShares, setLocalShares] = useState(0);
+  const [localCommentCount, setLocalCommentCount] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [progress, setProgress] = useState(0);
   const { openUserProfile } = useUserProfile();
   
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
   
   const [commentText, setCommentText] = useState("");
-  // 💡 히스토리인 경우 더미 댓글 배열을 비워둠으로써 실시간 카운트 동기화 방해를 막습니다.
   const [comments, setComments] = useState<any[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [replyingTo, setReplyingTo] = useState<{ id: number, author: string } | null>(null);
+  const [editingComment, setEditingComment] = useState<{ id: number, text: string } | null>(null);
 
   // 💡 1. 비디오 엘리먼트를 제어하기 위한 ref 추가
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -86,31 +95,88 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
   }, [isPlaying]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const updateProgress = () => {
+      if (video.duration) {
+        setProgress((video.currentTime / video.duration) * 100);
+      }
+    };
+
+    video.addEventListener("timeupdate", updateProgress);
+    return () => video.removeEventListener("timeupdate", updateProgress);
+  }, [isPlaying]);
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = x / rect.width;
+    
+    video.currentTime = percentage * video.duration;
+    setProgress(percentage * 100);
+  };
+
+  const toggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsMuted(!isMuted);
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+    }
+  };
+
+  useEffect(() => {
     if (isOpen && post) {
+      getUserInfoApi().then(res => { if(res?.userId) setCurrentUserId(res.userId); }).catch(console.error);
       setIsPlaying(false);
       setIsFollowing(false);
 
       setIsLiked(post.likedByMe ?? false);
       setLocalLikes(post.likes ?? 0);
       setLocalShares(post.sharesCount ?? 0);
-      if (isHistory) {
-        // 💡 8082 백엔드 포트로 진짜 댓글 목록 GET 요청 실행
-        apiClient.get(`/users/history/${post.id}/comments`,)
-          .then(res => {
-            // 백엔드의 HistoryCommentResponse 규격을 프론트 UI 맞춤형 배열로 빌드
-            const mapped = res.data.map((c: any) => ({
-              id: c.id,
-              author: c.author,
-              avatar: c.profilePictureUrl || "",
-              text: c.content,
-              time: formatRelativeTime(c.createdAt) // 필요 시 포맷팅 함수 연동 가능
-            }));
-            setComments(mapped);
-          })
-          .catch(err => {
-            console.error("실제 댓글 목록 로드 실패:", err);
-            setComments([]);
-          });
+      setLocalCommentCount(post.commentsCount ?? 0);
+      if (isHistory || isJam) {
+        if (isJam) {
+          getJamCommentsApi(Number(post.id))
+            .then(res => {
+              const mapComment = (c: any): any => ({
+                id: c.id,
+                author: c.authorName || c.author,
+                authorId: c.authorId || c.userId,
+                avatar: c.authorProfileImageUrl || c.profilePictureUrl || "",
+                text: c.content,
+                time: formatRelativeTime(c.createdAt),
+                replies: c.replies ? c.replies.map(mapComment) : []
+              });
+              setComments(res.map(mapComment));
+            })
+            .catch(err => {
+              console.error("실제 댓글 목록 로드 실패:", err);
+              setComments([]);
+            });
+        } else {
+          apiClient.get(`/users/history/${post.id}/comments`)
+            .then(res => {
+              const mapComment = (c: any): any => ({
+                id: c.id,
+                author: c.authorName || c.author,
+                authorId: c.authorId || c.userId,
+                avatar: c.authorProfileImageUrl || c.profilePictureUrl || "",
+                text: c.content,
+                time: formatRelativeTime(c.createdAt),
+                replies: c.replies ? c.replies.map(mapComment) : []
+              });
+              setComments(res.data.map(mapComment));
+            })
+            .catch(err => {
+              console.error("실제 댓글 목록 로드 실패:", err);
+              setComments([]);
+            });
+        }
       }
 
     }
@@ -122,39 +188,100 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
   // 💡 좋아요 토글 로직 최적화
   const toggleLike = async () => {
     const nextLikeState = !isLiked;
-    setIsLiked(nextLikeState); // UI 하트 불빛 선반영
-    setLocalLikes(prev => nextLikeState ? prev + 1 : prev - 1); // 숫자 카운트 선반영
+    const nextLikes = nextLikeState ? localLikes + 1 : localLikes - 1;
+    
+    setIsLiked(nextLikeState);
+    setLocalLikes(nextLikes);
+    if (post) {
+      post.likedByMe = nextLikeState;
+      post.likes = nextLikes;
+      onUpdatePost?.({ likedByMe: nextLikeState, likes: nextLikes });
+    }
     
     try {
-      await toggleHistoryLikeApi(post.id, nextLikeState);
+      if (isJam) {
+        await toggleJamLikeApi(Number(post.id));
+      } else {
+        await toggleHistoryLikeApi(post.id, nextLikeState);
+      }
     } catch (err) {
       // 실패 시 원래 상태로 롤백
       setIsLiked(isLiked);
-      setLocalLikes(prev => isLiked ? prev + 1 : prev - 1);
+      setLocalLikes(localLikes);
+      if (post) {
+        post.likedByMe = isLiked;
+        post.likes = localLikes;
+        onUpdatePost?.({ likedByMe: isLiked, likes: localLikes });
+      }
       console.error(err);
     }
   };
 
   const toggleFollow = () => setIsFollowing(!isFollowing);
 
+  const handleDeleteComment = async (commentId: number) => {
+    if (!confirm("댓글을 삭제하시겠습니까?")) return;
+    try {
+      if (isJam) await deleteJamCommentApi(Number(post.id), commentId);
+      else await deleteHistoryCommentApi(Number(post.id), commentId);
+      
+      const removeComment = (list: any[]): any[] => {
+        return list.filter(c => c.id !== commentId).map(c => ({...c, replies: c.replies ? removeComment(c.replies) : []}));
+      };
+      setComments(prev => removeComment(prev));
+      
+      const newCount = Math.max(0, localCommentCount - 1);
+      setLocalCommentCount(newCount);
+      if (post) {
+        post.commentsCount = newCount;
+        onUpdatePost?.({ commentsCount: newCount });
+      }
+    } catch (e) { alert("삭제 실패"); }
+  };
+
   const handleAddComment = async () => {
     if (!commentText.trim()) return;
     
     try {
-      // 서버에 댓글 저장 요청
-      const savedComment = await addHistoryCommentApi(post.id, commentText.trim());
-      
-      // 서버가 리턴해준 진짜 데이터 형식으로 추가
-      setComments(prev => [
-        { 
+      if (editingComment) {
+        let savedComment;
+        if (isJam) savedComment = await updateJamCommentApi(Number(post.id), editingComment.id, { content: commentText.trim() });
+        else savedComment = await updateHistoryCommentApi(Number(post.id), editingComment.id, commentText.trim());
+        
+        const updateList = (list: any[]): any[] => list.map(c => c.id === editingComment.id ? { ...c, text: commentText.trim() } : { ...c, replies: c.replies ? updateList(c.replies) : [] });
+        setComments(prev => updateList(prev));
+        setEditingComment(null);
+      } else {
+        let savedComment;
+        if (isJam) savedComment = await createJamCommentApi(Number(post.id), { content: commentText.trim(), parentId: replyingTo?.id });
+        else savedComment = await addHistoryCommentApi(Number(post.id), commentText.trim(), replyingTo?.id);
+        
+        const newC = { 
           id: savedComment.id, 
-          author: savedComment.author, 
-          avatar: savedComment.profilePictureUrl || "",
+          author: savedComment.authorName || savedComment.author, 
+          authorId: savedComment.authorId || savedComment.userId,
+          avatar: savedComment.authorProfileImageUrl || savedComment.profilePictureUrl || "",
           text: savedComment.content, 
-          time: "방금 전" 
-        },
-        ...prev
-      ]);
+          time: "방금 전",
+          replies: []
+        };
+        
+        if (replyingTo) {
+          const addReply = (list: any[]): any[] => list.map(c => c.id === replyingTo.id ? { ...c, replies: [...(c.replies || []), newC] } : { ...c, replies: c.replies ? addReply(c.replies) : [] });
+          setComments(prev => addReply(prev));
+        } else {
+          setComments(prev => [newC, ...prev]);
+        }
+        
+        const newCount = localCommentCount + 1;
+        setLocalCommentCount(newCount);
+        if (post) {
+          post.commentsCount = newCount;
+          onUpdatePost?.({ commentsCount: newCount });
+        }
+        
+        setReplyingTo(null);
+      }
       setCommentText("");
     } catch (err) {
       alert("댓글 등록에 실패했습니다.");
@@ -166,13 +293,26 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
       await navigator.clipboard.writeText(window.location.href);
       alert("링크가 클립보드에 복사되었습니다.");
       
-      setLocalShares(prev => prev + 1); // 💡 3. 클릭 즉시 UI 숫자를 1 올림 (선반영)
+      const nextShares = localShares + 1;
+      setLocalShares(nextShares);
+      if (post) {
+        post.sharesCount = nextShares;
+        onUpdatePost?.({ sharesCount: nextShares });
+      } // 💡 3. 클릭 즉시 UI 숫자를 1 올림 (선반영)
       
       // 서버 공유 카운트 증가 API 호출
-      await increaseHistoryShareApi(post.id);
+      if (isJam) {
+        await incrementJamShareApi(Number(post.id));
+      } else {
+        await increaseHistoryShareApi(post.id);
+      }
       setActiveShareId(null);
     } catch (err) {
-      setLocalShares(prev => Math.max(0, prev - 1)); // 실패 시 롤백 안전장치
+      setLocalShares(localShares);
+      if (post) {
+        post.sharesCount = localShares;
+        onUpdatePost?.({ sharesCount: localShares });
+      } // 실패 시 롤백 안전장치
       console.error("공유 실패:", err);
     }
   };
@@ -194,13 +334,40 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
           className="relative w-full h-full max-w-md bg-secondary flex justify-center sm:rounded-3xl sm:h-[90vh] overflow-hidden border-x sm:border border-border/50 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Close Button */}
-          <button 
-            onClick={onClose}
-            className="absolute top-4 right-4 w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors z-50 border border-white/10"
-          >
-            <X size={20} />
-          </button>
+          {/* Top Right Action Buttons */}
+          <div className="absolute top-4 right-4 flex items-center gap-3 z-50">
+            {post.type === "video" && (
+              <div className="relative group flex items-center">
+                <div className="absolute right-12 w-24 h-10 bg-black/40 backdrop-blur-md rounded-full flex items-center px-3 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                  <input 
+                    type="range" 
+                    min="0" max="1" step="0.05" 
+                    value={volume}
+                    onChange={(e) => {
+                       const v = parseFloat(e.target.value);
+                       setVolume(v);
+                       if (videoRef.current) videoRef.current.volume = v;
+                       if (v === 0) setIsMuted(true);
+                       else setIsMuted(false);
+                    }}
+                    className="w-full h-1 bg-white/30 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full cursor-pointer"
+                  />
+                </div>
+                <button 
+                  onClick={toggleMute}
+                  className="w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors border border-white/10 relative z-10"
+                >
+                  {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                </button>
+              </div>
+            )}
+            <button 
+              onClick={onClose}
+              className="w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors border border-white/10"
+            >
+              <X size={20} />
+            </button>
+          </div>
 
           {/* 💡 미디어 영역 최적화: VIDEO 타입 방어 및 object-contain 적용으로 이미지 잘림/확대 현상 전면 해결 */}
           <div className="absolute inset-0 w-full h-full bg-black flex items-center justify-center">
@@ -210,7 +377,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
                 src={post.thumbnail} 
                 className="w-full h-full object-contain opacity-90" 
                 controls={false}
-                muted
+                muted={isMuted}
                 loop
                 playsInline
                 key={post.thumbnail}
@@ -295,8 +462,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
               <div className="w-12 h-12 bg-background/20 backdrop-blur-md rounded-full flex items-center justify-center border border-border group-hover:bg-white/10 transition-colors">
                 <MessageCircle size={24} className="text-white" />
               </div>
-              {/* 💡 || 대신 ?? 로 수정 */}
-              <span className="text-white text-xs font-semibold drop-shadow-md">{comments.length + (post.commentsCount ?? 0)}</span>
+              <span className="text-white text-xs font-semibold drop-shadow-md">{localCommentCount}</span>
             </button>
 
             <button onClick={() => setActiveShareId(String(post.id))} className="flex flex-col items-center gap-1.5 group">
@@ -343,6 +509,19 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
             <div className="text-xs text-slate-300 font-light line-clamp-3 drop-shadow-md pointer-events-auto select-text">{post.description}</div>
           </div>
 
+          {/* Progress Bar */}
+          {post.type === "video" && (
+            <div 
+              className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/20 cursor-pointer z-[60] hover:h-2.5 transition-all"
+              onClick={handleSeek}
+            >
+              <div 
+                className="h-full bg-primary"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          )}
+
           {/* Modals inside Jam */}
           <AnimatePresence>
             {activeCommentId !== null && (
@@ -358,37 +537,67 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false }: Audi
                   className="bg-secondary w-full h-[70%] rounded-t-3xl border-t border-border flex flex-col shadow-2xl relative"
                 >
                   <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
-                    {/* 💡 || 대신 ?? 로 수정 */}
-                    <h3 className="text-lg font-black text-white">댓글 <span className="text-primary text-sm ml-1">{comments.length + (post.commentsCount ?? 0)}</span></h3>
-                    <button onClick={() => setActiveCommentId(null)} className="text-slate-400 hover:text-white"><X size={20}/></button>
+                    <h3 className="text-lg font-black text-white">댓글 <span className="text-primary text-sm ml-1">{localCommentCount}</span></h3>
+                    <button onClick={() => { setActiveCommentId(null); setReplyingTo(null); setEditingComment(null); setCommentText(''); }} className="text-slate-400 hover:text-white"><X size={20}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-5 space-y-5 hide-scrollbar">
-                    {comments.map((c, idx) => (
-                      <div key={`comment-${c.id}-${idx}`} className="flex gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 border border-border flex items-center justify-center overflow-hidden">
-                            {c.avatar ? (
-                              <img src={c.avatar} alt={c.author} className="w-full h-full object-cover" />
-                            ) : (
-                              <User size={16} className="text-slate-500" />
+                    {(() => {
+                      const renderComment = (c: any, isReply: boolean = false) => (
+                        <div key={`comment-${c.id}`} className={cn("flex gap-3 group", isReply ? "mt-3 ml-8 relative before:absolute before:-left-5 before:top-4 before:w-4 before:h-px before:bg-border before:content-['']" : "")}>
+                            <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 border border-border flex items-center justify-center overflow-hidden">
+                              {c.avatar ? (
+                                <img src={c.avatar} alt={c.author} className="w-full h-full object-cover" />
+                              ) : (
+                                <User size={16} className="text-slate-500" />
+                              )}
+                            </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-300">{c.author}</span>
+                                <span className="text-[10px] text-slate-500">{c.time}</span>
+                              </div>
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                {c.authorId === currentUserId && (
+                                  <>
+                                    <button onClick={() => {setEditingComment({ id: c.id, text: c.text }); setCommentText(c.text); setReplyingTo(null);}} className="text-[10px] text-slate-400 hover:text-white">수정</button>
+                                    <button onClick={() => handleDeleteComment(c.id)} className="text-[10px] text-slate-400 hover:text-red-500">삭제</button>
+                                  </>
+                                )}
+                                {!isReply && (
+                                  <button onClick={() => {setReplyingTo({ id: c.id, author: c.author }); setEditingComment(null); setCommentText('');}} className="text-[10px] text-slate-400 hover:text-primary">답글 달기</button>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-sm text-white break-all">{c.text}</p>
+                            
+                            {/* Replies */}
+                            {c.replies && c.replies.length > 0 && (
+                              <div className="mt-2">
+                                {c.replies.map((reply: any) => renderComment(reply, true))}
+                              </div>
                             )}
                           </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-bold text-slate-300">{c.author}</span>
-                            <span className="text-[10px] text-slate-500">{c.time}</span>
-                          </div>
-                          <p className="text-sm text-white">{c.text}</p>
                         </div>
-                      </div>
-                    ))}
+                      );
+                      return comments.map(c => renderComment(c, false));
+                    })()}
                   </div>
                   <div className="p-4 bg-background border-t border-border shrink-0">
+                    {(replyingTo || editingComment) && (
+                      <div className="flex justify-between items-center mb-2 px-2">
+                        <span className="text-xs text-primary">
+                          {replyingTo ? `@${replyingTo.author}님에게 답글 남기는 중` : `댓글 수정 중`}
+                        </span>
+                        <button onClick={() => { setReplyingTo(null); setEditingComment(null); setCommentText(''); }} className="text-xs text-slate-400 hover:text-white">취소</button>
+                      </div>
+                    )}
                     <form onSubmit={(e) => { e.preventDefault(); handleAddComment(); }} className="flex items-center bg-secondary rounded-full px-4 py-2 border border-border w-full">
                       <input 
                         type="text" 
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
-                        placeholder="댓글 남기기..." 
+                        placeholder={replyingTo ? "답글 남기기..." : "댓글 남기기..."} 
                         className="flex-1 bg-transparent text-sm text-white focus:outline-none py-1"
                       />
                       <button type="submit" disabled={!commentText.trim()} className={cn("p-1 transition-colors", commentText.trim() ? "text-primary" : "text-slate-500")} ><Send size={18} /></button>

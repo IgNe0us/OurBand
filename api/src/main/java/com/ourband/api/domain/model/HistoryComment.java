@@ -37,4 +37,8 @@ public class HistoryComment {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    public void setContent(String content) {
+        this.content = content;
+    }
 }

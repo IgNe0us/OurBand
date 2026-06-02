@@ -251,7 +251,7 @@ public class JamService {
                 .build();
     }
 
-    private JamPostResponseDTO mapToDTO(JamPost j, Long currentUserId) {
+    public JamPostResponseDTO mapToDTO(JamPost j, Long currentUserId) {
         Profile profile = profileRepository.findByUser_UserId(j.getUser().getUserId()).orElse(null);
         String profileImageUrl = profile != null ? profile.getProfilePictureUrl() : null;
 

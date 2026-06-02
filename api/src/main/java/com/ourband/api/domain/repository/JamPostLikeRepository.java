@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface JamPostLikeRepository extends JpaRepository<JamPostLike, Long> {
     Optional<JamPostLike> findByJamIdAndUserId(Long jamId, Long userId);
     boolean existsByJamIdAndUserId(Long jamId, Long userId);
+    java.util.List<JamPostLike> findByUserId(Long userId);
 }

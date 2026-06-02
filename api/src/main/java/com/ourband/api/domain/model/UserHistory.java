@@ -81,6 +81,10 @@ public class UserHistory {
         this.commentCount = (this.commentCount == null) ? 1 : this.commentCount + 1;
     }
 
+    public void decreaseCommentCount() {
+        this.commentCount = (this.commentCount == null || this.commentCount <= 0) ? 0 : this.commentCount - 1;
+    }
+
     /**
      * 공유 수 증가
      */

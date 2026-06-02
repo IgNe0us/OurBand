@@ -9,7 +9,9 @@ import com.ourband.api.domain.dto.user.MusicSimpleDTO;
 import com.ourband.api.domain.dto.user.UserProfileResponseDTO;
 import com.ourband.api.domain.dto.user.UserProfileUpdateRequestDTO;
 import com.ourband.api.domain.dto.user.UserRequestDTO;
+import com.ourband.api.domain.dto.user.UserSearchResponseDTO;
 import com.ourband.api.domain.model.FavoriteMusic;
+import com.ourband.api.domain.model.FavoriteMember;
 import com.ourband.api.domain.model.HistoryComment;
 import com.ourband.api.domain.model.HistoryLike;
 import com.ourband.api.domain.model.Profile;
@@ -18,6 +20,7 @@ import com.ourband.api.domain.model.UserGear;
 import com.ourband.api.domain.model.UserHistory;
 import com.ourband.api.domain.model.UserHistoryMedia;
 import com.ourband.api.domain.repository.FavoriteMusicRepository;
+import com.ourband.api.domain.repository.FavoriteMemberRepository;
 import com.ourband.api.domain.repository.FollowRepository;
 import com.ourband.api.domain.repository.HistoryCommentRepository;
 import com.ourband.api.domain.repository.HistoryLikeRepository;
@@ -50,6 +53,7 @@ public class UserService {
 
     private final FollowRepository followRepository;
     private final FavoriteMusicRepository favoriteMusicRepository;
+    private final FavoriteMemberRepository favoriteMemberRepository;
     private final UserGearRepository userGearRepository;
     private final UserHistoryRepository userHistoryRepository;
     private final BandMemberRepository bandMemberRepository;
@@ -91,6 +95,7 @@ public class UserService {
                 .user(savedUser) // 외래키 연결
                 .instrument(requestDTO.getInstrument()) // 주 포지션 저장
                 .location(requestDTO.getLocation())
+                .level(1)
                 // bio, experienceLevel 등은 가입 시점이므로 null 처리됨
                 .build();
 
@@ -218,6 +223,7 @@ public class UserService {
         return UserProfileResponseDTO.builder()
                 .userId(user.getUserId())
                 .nickname(user.getNickname())
+                .type(user.getType())
                 
                 // profile 데이터 매핑
                 .level(profile.getLevel())
@@ -275,6 +281,37 @@ public class UserService {
     public void deleteFavoriteMusic(Long userId, Long musicId) {
         // 유저 검증 후 삭제 (남의 곡을 지우는 것 방지)
         favoriteMusicRepository.deleteByIdAndUserId(musicId, userId);
+    }
+
+    // 관심 멤버 찜하기 토글
+    @Transactional
+    public boolean toggleFavoriteMember(Long userId, Long targetUserId) {
+        if (userId.equals(targetUserId)) {
+            throw new IllegalArgumentException("자기 자신을 찜할 수 없습니다.");
+        }
+        
+        boolean exists = favoriteMemberRepository.existsByUser_UserIdAndTargetUser_UserId(userId, targetUserId);
+        if (exists) {
+            favoriteMemberRepository.deleteByUser_UserIdAndTargetUser_UserId(userId, targetUserId);
+            return false; // 언찜
+        } else {
+            User user = userRepository.findById(userId).orElseThrow();
+            User targetUser = userRepository.findById(targetUserId).orElseThrow();
+            FavoriteMember favoriteMember = FavoriteMember.builder()
+                    .user(user)
+                    .targetUser(targetUser)
+                    .build();
+            favoriteMemberRepository.save(favoriteMember);
+            return true; // 찜 완료
+        }
+    }
+
+    // 유저의 모든 관심 멤버 ID 목록 가져오기
+    @Transactional(readOnly = true)
+    public List<Long> getFavoriteMemberIds(Long userId) {
+        return favoriteMemberRepository.findByUser_UserId(userId).stream()
+                .map(fm -> fm.getTargetUser().getUserId())
+                .toList();
     }
 
     // 유저 프로필 장비 추가하기
@@ -416,14 +453,12 @@ public class UserService {
         return likeViewCacheService.getCachedLikeCount("history", historyId, history.getLikeCount());
     }
 
-    // 2. 댓글 작성
     @Transactional
-    public HistoryCommentResponse addComment(Long userId, Long historyId, String content) {
+    public HistoryCommentResponse addComment(Long userId, Long historyId, String content, Long parentId) {
         UserHistory history = userHistoryRepository.findById(historyId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 게시글입니다."));
         
         User user = userRepository.findById(userId).orElseThrow();
-
         Profile profile = profileRepository.findByUser_UserId(userId).orElseThrow();
 
         // 댓글 저장
@@ -431,7 +466,7 @@ public class UserService {
                 .historyId(historyId)
                 .userId(userId)
                 .content(content)
-                .parentId(null) // 기본 댓글은 null 처리
+                .parentId(parentId) // 기본 댓글은 null, 대댓글은 부모 ID
                 .build();
         HistoryComment savedComment = historyCommentRepository.save(comment);
 
@@ -449,31 +484,64 @@ public class UserService {
         return new HistoryCommentResponse(
                 savedComment.getId(),
                 userId,
-                user.getNickname(), // 유저 테이블에서 가져온 실제 닉네임 매핑
+                user.getNickname(),
                 profile.getProfilePictureUrl(),
                 savedComment.getContent(),
-                savedComment.getCreatedAt()
+                savedComment.getCreatedAt(),
+                savedComment.getParentId(),
+                new java.util.ArrayList<>()
         );
     }
 
     // 3. 특정 히스토리의 댓글 목록 조회
     @Transactional(readOnly = true)
     public List<HistoryCommentResponse> getComments(Long historyId) {
-        List<HistoryComment> comments = historyCommentRepository.findByHistoryIdOrderByCreatedAtDesc(historyId);
+        List<HistoryComment> topLevelComments = historyCommentRepository.findByHistoryIdAndParentIdIsNullOrderByCreatedAtAsc(historyId);
         
-        return comments.stream().map(c -> {
-            // 각각의 댓글을 순회하며 user_id로 닉네임 매핑
-            String nickname = userRepository.findById(c.getUserId())
-                    .map(User::getNickname)
-                    .orElse("알 수 없는 사용자");
+        return topLevelComments.stream().map(c -> {
+            HistoryCommentResponse dto = mapCommentToDTO(c);
+            List<HistoryComment> replies = historyCommentRepository.findByParentIdOrderByCreatedAtAsc(c.getId());
+            List<HistoryCommentResponse> replyDTOs = replies.stream().map(this::mapCommentToDTO).toList();
+            return new HistoryCommentResponse(
+                dto.id(), dto.userId(), dto.author(), dto.profilePictureUrl(),
+                dto.content(), dto.createdAt(), dto.parentId(), replyDTOs
+            );
+        }).toList();
+    }
 
-                    // 💡 댓글 작성자(c.getUserId())의 프로필 이미지 실시간 조회
+    private HistoryCommentResponse mapCommentToDTO(HistoryComment c) {
+        String nickname = userRepository.findById(c.getUserId())
+                .map(User::getNickname)
+                .orElse("알 수 없는 사용자");
         String profilePic = profileRepository.findByUser_UserId(c.getUserId())
                 .map(Profile::getProfilePictureUrl)
-                .orElse(null); // 프로필 사진이 없으면 null
+                .orElse(null);
+        return new HistoryCommentResponse(c.getId(), c.getUserId(), nickname, profilePic, c.getContent(), c.getCreatedAt(), c.getParentId(), new java.util.ArrayList<>());
+    }
 
-            return new HistoryCommentResponse(c.getId(), c.getUserId(), nickname, profilePic, c.getContent(), c.getCreatedAt());
-        }).toList();
+    @Transactional
+    public HistoryCommentResponse updateComment(Long commentId, Long userId, String content) {
+        HistoryComment comment = historyCommentRepository.findById(commentId)
+                .orElseThrow(() -> new RuntimeException("Comment not found"));
+        if (!comment.getUserId().equals(userId)) {
+            throw new RuntimeException("Unauthorized");
+        }
+        comment.setContent(content);
+        return mapCommentToDTO(comment);
+    }
+
+    @Transactional
+    public void deleteComment(Long commentId, Long userId) {
+        HistoryComment comment = historyCommentRepository.findById(commentId)
+                .orElseThrow(() -> new RuntimeException("Comment not found"));
+        if (!comment.getUserId().equals(userId)) {
+            throw new RuntimeException("Unauthorized");
+        }
+        UserHistory history = userHistoryRepository.findById(comment.getHistoryId()).orElse(null);
+        if (history != null) {
+            history.decreaseCommentCount();
+        }
+        historyCommentRepository.delete(comment);
     }
 
     // 4. 게시글 공유 시 카운트 증가
@@ -566,6 +634,38 @@ public class UserService {
                     .isFollowing(isFollowing)
                     .build();
         }).filter(dto -> dto != null).toList();
+    }
+
+    // ========================================
+    // 💡 유저 검색 기능
+    // ========================================
+    @Transactional(readOnly = true)
+    public List<UserSearchResponseDTO> searchUsers(String keyword, Long loginUserId) {
+        if (loginUserId != null) {
+            ensureFollowCacheLoaded(loginUserId);
+        }
+
+        List<User> users = userRepository.findByNicknameContainingIgnoreCase(keyword);
+
+        return users.stream()
+                .filter(user -> loginUserId == null || !user.getUserId().equals(loginUserId))
+                .map(user -> {
+            Profile profile = profileRepository.findByUser_UserId(user.getUserId()).orElse(null);
+            
+            boolean isFollowing = false;
+            if (loginUserId != null && !loginUserId.equals(user.getUserId())) {
+                isFollowing = Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember("following:" + loginUserId, user.getUserId().toString()));
+            }
+
+            return UserSearchResponseDTO.builder()
+                    .userId(user.getUserId())
+                    .nickname(user.getNickname())
+                    .profilePictureUrl(profile != null ? profile.getProfilePictureUrl() : null)
+                    .instrument(profile != null ? profile.getInstrument() : null)
+                    .location(profile != null ? profile.getLocation() : null)
+                    .isFollowing(isFollowing)
+                    .build();
+        }).toList();
     }
 
     // ========================================

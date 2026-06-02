@@ -244,9 +244,12 @@ export type BandListData = {
   meetingSchedule: string;
   memberCount: number;
   recruitingPositions: { id: number; role: string }[];
-  recruiting: boolean;
-  followed: boolean;
+  isRecruiting: boolean;
+  isFollowed: boolean;
   followerCount: number;
+  latestVideoUrl?: string;
+  leaderId?: number;
+  leaderProfileImageUrl?: string | null;
   createdAt: string;
 };
 

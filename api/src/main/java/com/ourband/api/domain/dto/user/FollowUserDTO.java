@@ -13,5 +13,7 @@ public class FollowUserDTO {
     private String profilePictureUrl;
     private String bio;
     private String instrument;
+    
+    @com.fasterxml.jackson.annotation.JsonProperty("isFollowing")
     private boolean isFollowing; // 내(로그인 유저)가 이 사람을 팔로우하고 있는지 여부
 }

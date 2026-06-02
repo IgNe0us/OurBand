@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface JamPostRepository extends JpaRepository<JamPost, Long> {
     Page<JamPost> findByUser_UserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
@@ -17,4 +19,6 @@ public interface JamPostRepository extends JpaRepository<JamPost, Long> {
     Page<JamPost> searchJamPosts(@Param("genre") String genre,
                                  @Param("instrument") String instrument,
                                  Pageable pageable);
+
+    List<JamPost> findByCreatedAtAfter(java.time.LocalDateTime since);
 }

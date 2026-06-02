@@ -24,6 +24,7 @@ public class MemberSeekingPostResponseDTO {
     private String mediaUrl;
     private String mediaType;
     private String status;
+    private java.math.BigDecimal potential;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

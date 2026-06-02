@@ -209,10 +209,14 @@ public class RecruitmentService {
         User author = userRepository.findById(post.getUserId()).orElse(null);
         String authorName = author != null ? author.getNickname() : "알 수 없음";
         String authorProfileImageUrl = null;
+        java.math.BigDecimal potential = java.math.BigDecimal.ZERO;
         if (author != null) {
             Profile profile = profileRepository.findByUser_UserId(author.getUserId()).orElse(null);
             if (profile != null) {
                 authorProfileImageUrl = profile.getProfilePictureUrl();
+                if (profile.getPotential() != null) {
+                    potential = profile.getPotential();
+                }
             }
         }
 
@@ -229,6 +233,7 @@ public class RecruitmentService {
                 .mediaUrl(post.getMediaUrl())
                 .mediaType(post.getMediaType())
                 .status(post.getStatus())
+                .potential(potential)
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())
                 .build();

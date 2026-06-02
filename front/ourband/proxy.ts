@@ -1,8 +1,8 @@
-// middleware.ts
+// proxy.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // 1. 로그인 상태 확인 (예: 쿠키에 저장된 토큰 확인)
   const isAuthenticated = request.cookies.has('access_token'); 
 

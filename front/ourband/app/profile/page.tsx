@@ -1,13 +1,13 @@
 "use client";
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useRef } from "react";
 import { AudioJamModal } from "@/components/jam/AudioJamModal";
 import { LayoutContext } from "@/components/layout/AppLayout";
 import { useUserProfile } from "@/store/userProfileContext";
 
 import React, { useState } from "react";
 import { Settings, Share, Music2, Edit3, Play, MapPin, CalendarDays, Zap, AtSign, Menu, X, LogOut, Bell, Shield, Users, Plus, Trash2, Check, UserMinus, GuitarIcon, Guitar, User, Heart } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useRouter } from 'next/navigation';
+import { cn, translateInstrument } from "@/lib/utils";
+import { useRouter, useSearchParams } from 'next/navigation';
 import { KOREA_REGIONS } from "@/lib/regions";
 import Link from 'next/link';
 import type { LayoutContextType } from "@/components/layout/AppLayout";
@@ -99,7 +99,9 @@ export default function ProfilePage() {
   const [isAddingGear, setIsAddingGear] = useState(false);
   const [newGear, setNewGear] = useState("");
   const router = useRouter();
-  const navigate = (path: string) => router.push(path);;
+  const navigate = (path: string) => router.push(path);
+  const searchParams = useSearchParams();
+  const openedHistoryIdRef = useRef<string | null>(null);
 
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
 
@@ -400,6 +402,21 @@ export default function ProfilePage() {
     }
   }, [activeTab, profileData]);
 
+  // Open history modal automatically if historyId is in URL
+  useEffect(() => {
+    if (profileData && searchParams) {
+      const historyId = searchParams.get('historyId');
+      if (historyId && openedHistoryIdRef.current !== historyId) {
+        openedHistoryIdRef.current = historyId; // Mark as opened
+        setActiveTab("히스토리");
+        const history = profileData.histories.find((h: any) => h.id === Number(historyId));
+        if (history) {
+          setSelectedHistory(history);
+        }
+      }
+    }
+  }, [profileData, searchParams]);
+
   const handlePublishToJam = async (history: History) => {
     if (!history.mediaUrl) return;
     try {
@@ -473,7 +490,7 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        <div className="absolute top-12 md:top-8 right-6 pr-14 md:pr-16 flex gap-3">
+        {/* <div className="absolute top-12 md:top-8 right-6 pr-14 md:pr-16 flex gap-3">
           <button 
             onClick={(e) => {
               e.stopPropagation();
@@ -492,7 +509,7 @@ export default function ProfilePage() {
           >
             <Settings size={18} />
           </button>
-        </div>
+        </div> */}
       </div>
 
       <div className="px-6 md:px-10 lg:px-16 -mt-20 relative z-10 max-w-6xl mx-auto w-full">
@@ -544,7 +561,7 @@ export default function ProfilePage() {
                <MapPin size={14} className="text-primary" /> 활동구역 ({profileData.location ? profileData.location : "없음"})
             </span>
             <span className="flex items-center gap-1.5 text-slate-300 bg-secondary border border-border px-3 py-1.5 rounded-lg font-bold">
-               <GuitarIcon size={14} className="text-primary" /> 포지션 ({profileData.instrument})
+               <GuitarIcon size={14} className="text-primary" /> 포지션 ({translateInstrument(profileData.instrument)})
             </span>
           </div>
           
@@ -1186,7 +1203,7 @@ export default function ProfilePage() {
                         </div>
                         <div className="flex flex-col">
                           <span className="font-bold text-white text-sm group-hover:text-primary transition-colors">{user.nickname}</span>
-                          <span className="text-xs text-slate-400 line-clamp-1">{user.bio || user.instrument || ""}</span>
+                          <span className="text-xs text-slate-400 line-clamp-1">{user.bio || translateInstrument(user.instrument) || ""}</span>
                         </div>
                       </div>
                       {/* Follow/Unfollow Button */}
@@ -1205,10 +1222,10 @@ export default function ProfilePage() {
                         {(user.isFollowing || (user as any).following) ? (
                           <>
                             <Check size={14} />
-                            <span>Following</span>
+                            <span>팔로잉</span>
                           </>
                         ) : (
-                          "Follow"
+                          "팔로우"
                         )}
                       </button>
                     </div>
@@ -1236,11 +1253,31 @@ export default function ProfilePage() {
           date: "방금 전",
           likedByMe: selectedHistory.likedByMe, 
           sharesCount: selectedHistory.shareCount,
+          commentsCount: selectedHistory.commentCount,
           author: selectedHistory.authorNickname,
           authorAvatar: selectedHistory.authorProfilePic,
 
           type: selectedHistory.mediaType?.toUpperCase() === "VIDEO" ? "video" : "post"
         } : null}
+        onUpdatePost={(updated) => {
+          setSelectedHistory((prev: any) => prev ? { 
+            ...prev, 
+            likeCount: updated.likes !== undefined ? updated.likes : prev.likeCount, 
+            likedByMe: updated.likedByMe !== undefined ? updated.likedByMe : prev.likedByMe, 
+            commentCount: updated.commentsCount !== undefined ? updated.commentsCount : prev.commentCount, 
+            shareCount: updated.sharesCount !== undefined ? updated.sharesCount : prev.shareCount 
+          } : null);
+          setProfileData((prev: any) => prev ? {
+            ...prev,
+            histories: prev.histories.map((h: any) => h.id === selectedHistory?.id ? { 
+              ...h, 
+              likeCount: updated.likes !== undefined ? updated.likes : h.likeCount, 
+              likedByMe: updated.likedByMe !== undefined ? updated.likedByMe : h.likedByMe, 
+              commentCount: updated.commentsCount !== undefined ? updated.commentsCount : h.commentCount, 
+              shareCount: updated.sharesCount !== undefined ? updated.sharesCount : h.shareCount 
+            } : h)
+          } : null);
+        }}
       />
     </div>
   );

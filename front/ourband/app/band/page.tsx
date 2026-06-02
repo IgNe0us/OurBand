@@ -2,7 +2,7 @@
 import { useContext, useEffect, useState, useRef } from "react";
 import { LayoutContext } from "@/components/layout/AppLayout";
 import { useRouter } from 'next/navigation';
-import { Search, MapPin, Plus, Star, Filter, Menu, X, Edit3, Image as ImageIcon, Trash2 } from "lucide-react";
+import { Search, MapPin, Plus, Star, Filter, Menu, X, Edit3, Image as ImageIcon, Trash2, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -13,9 +13,10 @@ import {
   sendOfferApi, 
   MemberSeekingPostData 
 } from "@/api/recruitment/recruitmentService";
-import { getUserInfoApi } from "@/api/account/userService";
-import { getMyBandsApi, getBandProfileApi, MyBandData } from "@/api/band/bandService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
+import { getUserInfoApi, toggleFavoriteMemberApi, getFavoriteMembersApi } from "@/api/account/userService";
+import { getMyBandsApi, getBandProfileApi, MyBandData } from "@/api/band/bandService";
+import { UserProfileModal } from "@/components/common/UserProfileModal";
 import toast from "react-hot-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -52,7 +53,10 @@ export default function MemberSeekingPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // States for filtering & modals
-  const [filters, setFilters] = useState({ loc1: "전국", loc2: "전체", pos: "전체 포지션" });
+  const [filters, setFilters] = useState({ loc1: "전국", loc2: "전체", pos: "전체 포지션", favoriteOnly: false });
+  const [favoriteMembers, setFavoriteMembers] = useState<number[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+  
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<MemberSeekingPostData | null>(null);
   const [removeExistingMedia, setRemoveExistingMedia] = useState(false);
@@ -128,6 +132,9 @@ export default function MemberSeekingPage() {
 
       const seekingPosts = await getSeekingPostsApi();
       setPosts(seekingPosts);
+
+      const favMembers = await getFavoriteMembersApi();
+      setFavoriteMembers(favMembers);
     } catch (err) {
       console.error("데이터 로드 실패:", err);
     } finally {
@@ -146,12 +153,13 @@ export default function MemberSeekingPage() {
       }
     }
     const matchPos = filters.pos === "전체 포지션" || post.position?.includes(filters.pos);
-    return matchLoc && matchPos;
+    const matchFav = filters.favoriteOnly ? favoriteMembers.includes(post.userId) : true;
+    return matchLoc && matchPos && matchFav;
   });
 
-  const updateFilter = (key: "loc1" | "loc2" | "pos", value: string) => {
+  const updateFilter = (key: "loc1" | "loc2" | "pos" | "favoriteOnly", value: string | boolean) => {
     if (key === "loc1") {
-      setFilters(prev => ({ ...prev, loc1: value, loc2: "전체" }));
+      setFilters(prev => ({ ...prev, loc1: value as string, loc2: "전체" }));
     } else {
       setFilters(prev => ({ ...prev, [key]: value }));
     }
@@ -299,6 +307,19 @@ export default function MemberSeekingPage() {
             <button className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary border border-border rounded-lg text-xs font-bold text-slate-300 shrink-0 cursor-default">
             <Filter size={14} /> 필터
             </button>
+
+            <button 
+              onClick={() => updateFilter("favoriteOnly", !filters.favoriteOnly)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-bold transition-colors shrink-0",
+                filters.favoriteOnly 
+                  ? "bg-rose-500/10 border-rose-500/50 text-rose-400" 
+                  : "bg-secondary border-border text-slate-300 hover:text-white"
+              )}
+            >
+              <Heart size={14} className={cn(filters.favoriteOnly && "fill-rose-400")} />
+              관심 멤버
+            </button>
             
             <div className="relative shrink-0">
             <select 
@@ -362,7 +383,7 @@ export default function MemberSeekingPage() {
             {filteredPosts.length > 0 ? filteredPosts.map(post => (
                 <div key={post.id} className="bg-secondary/40 border border-border rounded-[1.5rem] p-5 flex flex-col hover:border-primary/30 transition-colors">
                 <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 cursor-pointer" onClick={() => setSelectedProfileId(post.userId)}>
                     <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-800">
                         {post.authorProfileImageUrl ? (
                             <img src={post.authorProfileImageUrl} alt={post.authorName} className="w-full h-full object-cover" />
@@ -371,21 +392,43 @@ export default function MemberSeekingPage() {
                         )}
                     </div>
                     <div>
-                        <h4 className="font-bold text-white text-base md:text-lg">{post.authorName} <span className="text-primary text-xs ml-1 bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded">{post.position}</span></h4>
+                        <h4 className="font-bold text-white text-base md:text-lg hover:text-primary transition-colors">{post.authorName} <span className="text-primary text-xs ml-1 bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded">{post.position}</span></h4>
                         <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><MapPin size={12}/> {post.location} • {post.genreStyle}</p>
                     </div>
                     </div>
                     
-                    {currentUser?.userId === post.userId && (
-                      <div className="flex gap-2">
-                        <button onClick={() => handleEditClick(post)} className="text-slate-400 hover:text-white transition-colors" title="수정">
-                          <Edit3 size={16} />
+                    {currentUser?.userId === post.userId ? (
+                        <div className="flex gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); handleEditClick(post); }} className="text-slate-400 hover:text-white transition-colors" title="수정">
+                            <Edit3 size={16} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(post.id); }} className="text-slate-400 hover:text-red-400 transition-colors" title="삭제">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const res = await toggleFavoriteMemberApi(post.userId);
+                              if (res.isFavorite) {
+                                setFavoriteMembers(prev => [...prev, post.userId]);
+                                toast.success("관심 멤버로 등록되었습니다.");
+                              } else {
+                                setFavoriteMembers(prev => prev.filter(id => id !== post.userId));
+                                toast.success("관심 멤버에서 해제되었습니다.");
+                              }
+                            } catch (err) {
+                              toast.error("관심 멤버 설정에 실패했습니다.");
+                            }
+                          }}
+                          className="text-slate-400 hover:text-rose-400 transition-colors shrink-0" 
+                          title="관심 멤버 찜하기"
+                        >
+                          <Heart size={18} className={cn(favoriteMembers.includes(post.userId) && "fill-rose-400 text-rose-400")} />
                         </button>
-                        <button onClick={() => handleDeleteClick(post.id)} className="text-slate-400 hover:text-red-400 transition-colors" title="삭제">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    )}
+                      )}
                 </div>
                 
                 <h5 className="text-white font-bold text-sm mb-2">{post.title}</h5>
@@ -691,9 +734,11 @@ export default function MemberSeekingPage() {
         )}
       </AnimatePresence>
 
+      <UserProfileModal 
+        isOpen={selectedProfileId !== null} 
+        onClose={() => setSelectedProfileId(null)} 
+        userId={selectedProfileId!} 
+      />
     </div>
   );
 }
-
-
-

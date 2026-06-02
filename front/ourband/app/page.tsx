@@ -16,6 +16,9 @@ import { cn } from "@/lib/utils";
 import { MOCK_TRENDING_BANDS } from "@/lib/mockData";
 import toast from "react-hot-toast";
 
+import { getTrendingBandsApi, getTrendingJamsApi } from "@/api/trend/trendApi";
+import { getBandProfileApi, toggleBandFollowApi } from "@/api/band/bandService";
+
 type PopularJamVideo = VideoPost & { likes: number; author: string; inst?: string; style?: string };
 
 const MOCK_POPULAR_VIDEOS: PopularJamVideo[] = [
@@ -139,10 +142,105 @@ export default function HomePage() {
   const [selectedBand, setSelectedBand] = useState<BandProfileData | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<PopularJamVideo | null>(null);
   const [followedBands, setFollowedBands] = useState<number[]>([]);
+  const [trendingBands, setTrendingBands] = useState<any[]>([]);
+  const [popularVideos, setPopularVideos] = useState<any[]>([]);
 
-  const toggleFollow = (e: React.MouseEvent, id: number) => {
+  useEffect(() => {
+    const fetchTrends = async () => {
+      try {
+        const bands = await getTrendingBandsApi();
+        if (bands && bands.length > 0) {
+          const mappedBands = bands.map((band: any) => ({
+            id: band.id,
+            name: band.name,
+            coverImage: band.coverImageUrl || "https://picsum.photos/seed/band" + band.id + "/800/600",
+            logoImage: band.logoImageUrl || "https://i.pravatar.cc/150?u=band" + band.id,
+            genre: band.genre,
+            frequency: band.meetingSchedule || "주 1회",
+            location: band.location,
+            description: band.description,
+            memberCount: band.memberCount,
+            memberProfileUrls: (band.memberProfileUrls && band.memberProfileUrls.length > 0) 
+              ? band.memberProfileUrls 
+              : (band.leaderProfileImageUrl ? [band.leaderProfileImageUrl] : []),
+            recruitingPositions: (band.recruitingPositions || []).map((pos: any) => ({ isRecruiting: true, role: pos.role })),
+            isFollowed: band.followed === true,
+          }));
+          setTrendingBands(mappedBands);
+          // 서버에서 받은 팔로우 상태로 초기화
+          const followedIds = mappedBands.filter((b: any) => b.isFollowed).map((b: any) => b.id);
+          if (followedIds.length > 0) {
+            setFollowedBands(prev => [...new Set([...prev, ...followedIds])]);
+          }
+        } else {
+          setTrendingBands(MOCK_TRENDING_BANDS);
+        }
+      } catch (e) {
+        console.error(e);
+        setTrendingBands(MOCK_TRENDING_BANDS);
+      }
+      
+      try {
+        const jams = await getTrendingJamsApi();
+        if (jams && jams.length > 0) {
+          const mappedJams = jams.map((jam: any) => ({
+            id: String(jam.id),
+            title: jam.title,
+            date: new Date(jam.createdAt).toLocaleDateString(),
+            author: jam.authorName,
+            thumbnail: jam.mediaUrl || "https://picsum.photos/seed/jamimg1/400/800",
+            description: jam.description,
+            likes: jam.likeCount,
+            inst: jam.instrument,
+            style: jam.genre,
+            mediaUrl: jam.mediaUrl,
+            parentId: jam.parentId,
+            originalAuthorName: jam.originalAuthorName,
+            userId: jam.userId,
+            authorId: jam.userId,
+            authorAvatar: jam.authorProfileImageUrl,
+            likedByMe: jam.isLiked === true || jam.liked === true,
+            viewCount: jam.viewCount,
+            commentsCount: jam.commentCount,
+            sharesCount: jam.shareCount,
+            type: "video"
+          }));
+          setPopularVideos(mappedJams);
+        } else {
+          setPopularVideos(MOCK_POPULAR_VIDEOS);
+        }
+      } catch (e) {
+        console.error(e);
+        setPopularVideos(MOCK_POPULAR_VIDEOS);
+      }
+    };
+    fetchTrends();
+  }, []);
+
+  const handleBandClick = async (band: any) => {
+    try {
+      if (typeof band.id === 'number') {
+        const fullProfile = await getBandProfileApi(band.id);
+        setSelectedBand(fullProfile);
+      } else {
+        setSelectedBand(band as any);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("밴드 정보를 불러올 수 없습니다.");
+      setSelectedBand(band as any);
+    }
+  };
+
+  const handleToggleFollow = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    setFollowedBands(prev => prev.includes(id) ? prev.filter(bId => bId !== id) : [...prev, id]);
+    try {
+      await toggleBandFollowApi(id);
+      setFollowedBands(prev => prev.includes(id) ? prev.filter(bId => bId !== id) : [...prev, id]);
+    } catch (error) {
+      console.error(error);
+      toast.error("팔로우 요청에 실패했습니다. 로그인 상태를 확인해주세요.");
+    }
   };
 
   const trendingRef = useRef<HTMLDivElement>(null);
@@ -236,11 +334,11 @@ export default function HomePage() {
                 className="flex items-center gap-1.5 mb-1.5 cursor-pointer relative"
                 onClick={() => setShowLocationDropdown(!showLocationDropdown)}
               >
-                <MapPin size={16} className="text-primary" />
-                <h2 className="text-sm font-semibold text-slate-400 hover:text-white transition-colors">{location} <span className="text-xs ml-1">▼</span></h2>
+                {/* <MapPin size={16} className="text-primary" />
+                <h2 className="text-sm font-semibold text-slate-400 hover:text-white transition-colors">{location} <span className="text-xs ml-1">▼</span></h2> */}
                 
                 {/* Location Dropdown Mock */}
-                <AnimatePresence>
+                {/* <AnimatePresence>
                   {showLocationDropdown && (
                     <motion.div 
                       className="absolute top-6 left-0 bg-secondary border border-border rounded-xl shadow-2xl py-2 w-48 z-50"
@@ -259,17 +357,17 @@ export default function HomePage() {
                       ))}
                     </motion.div>
                   )}
-                </AnimatePresence>
+                </AnimatePresence> */}
               </div>
-              <h1 className="text-3xl font-black tracking-tight text-white">이번 주 트렌드</h1>
+              <h1 className="text-3xl font-black tracking-tight text-white">트렌드</h1>
             </div>
           </div>
-          <button 
+          {/* <button 
             onClick={() => toast.error("통합 검색 모달이 열립니다.")}
             className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center border border-border text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
           >
             <Search size={18} />
-          </button>
+          </button> */}
         </div>
       </header>
 
@@ -297,20 +395,20 @@ export default function HomePage() {
               ref={trendingRef}
               className="flex overflow-x-auto gap-6 hide-scrollbar pb-6 -mx-6 px-6 md:mx-0 md:px-0"
             >
-              {MOCK_TRENDING_BANDS.map((band) => (
+              {(trendingBands.length > 0 ? trendingBands : MOCK_TRENDING_BANDS).map((band: any) => (
                 <motion.div 
                   key={band.id} 
                   className="w-[85vw] max-w-[320px] sm:max-w-[350px] md:w-[320px] md:max-w-none bg-secondary rounded-[2rem] overflow-hidden shadow-2xl border border-border shrink-0 group relative cursor-pointer"
                   whileHover={{ y: -5 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  onClick={() => setSelectedBand(band as any)}
+                  onClick={() => handleBandClick(band)}
                 >
                   <div className="relative h-48 bg-slate-800">
                     <img src={band.coverImage} alt="Band cover" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" referrerPolicy="no-referrer" />
                     <div className="absolute inset-0 bg-gradient-to-t from-secondary via-black/40 to-transparent" />
                     
                     {/* Live / Status Badge */}
-                    {band.members?.some((m: any) => m.isRecruiting) && (
+                    {band.recruitingPositions?.length > 0 && (
                       <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs border border-border shadow-lg">
                         <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
                         <span className="font-bold text-white tracking-wider">구인 중</span>
@@ -331,7 +429,7 @@ export default function HomePage() {
                   
                   <div className="p-5">
                     <div className="flex gap-2 mb-3 max-w-full overflow-hidden">
-                      {band.members?.filter((m: any) => m.isRecruiting).map((m: any, i: number) => (
+                      {band.recruitingPositions?.map((m: any, i: number) => (
                         <span key={`${m.role}-${i}`} className="px-2.5 py-1 text-[11px] bg-primary/20 text-primary border border-primary/20 rounded-md font-bold uppercase shrink-0">{m.role} 구함</span>
                       ))}
                       <span className="px-2.5 py-1 text-[11px] bg-slate-800 border border-border rounded-md text-slate-300 font-medium shrink-0">{band.frequency} 합주</span>
@@ -339,13 +437,18 @@ export default function HomePage() {
                     
                     <div className="flex items-center gap-2 mb-4 mt-2">
                       <div className="flex -space-x-2">
-                        {band.members?.slice(0, 4).map((member: any, i: number) => (
+                        {band.memberProfileUrls?.slice(0, 4).map((url: string, i: number) => (
                           <div key={`${band.id}-member-${i}`} className="w-8 h-8 rounded-full border-2 border-secondary bg-slate-800 overflow-hidden relative group-hover:z-10 group-hover:ring-2 group-hover:ring-primary transition-all">
-                            <img src={`https://i.pravatar.cc/100?u=${band.id}${i}`} alt="Member" className="w-full h-full object-cover" />
+                            <img src={url} alt="Member" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           </div>
                         ))}
+                        {(!band.memberProfileUrls || band.memberProfileUrls.length === 0) && (
+                          <div className="w-8 h-8 rounded-full border-2 border-secondary bg-slate-700 flex items-center justify-center">
+                            <User size={14} className="text-slate-400" />
+                          </div>
+                        )}
                       </div>
-                      <span className="text-xs text-slate-400 font-medium ml-1">{band.members?.length || 0}명 멤버</span>
+                      <span className="text-xs text-slate-400 font-medium ml-1">{band.memberCount || 0}명 멤버</span>
                     </div>
 
                     <div className="space-y-2 mb-4">
@@ -360,7 +463,7 @@ export default function HomePage() {
                     <div className="pt-4 border-t border-border/50 flex items-center justify-between mt-auto">
                       <div className="text-xs text-slate-500 font-medium">소통을 시작해보세요!</div>
                       <button 
-                        onClick={(e) => toggleFollow(e, band.id)}
+                        onClick={(e) => handleToggleFollow(e, band.id)}
                         className={cn(
                           "w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0",
                           followedBands.includes(band.id) 
@@ -410,7 +513,7 @@ export default function HomePage() {
               ref={videoRef}
               className="flex overflow-x-auto gap-4 md:gap-6 hide-scrollbar pb-6 -mx-6 px-6 md:mx-0 md:px-0"
             >
-              {MOCK_POPULAR_VIDEOS.map((video) => (
+              {(popularVideos.length > 0 ? popularVideos : MOCK_POPULAR_VIDEOS).map((video: any) => (
                 <motion.div 
                   key={video.id} 
                   className="w-[60vw] max-w-[240px] md:w-[240px] md:max-w-none shrink-0 bg-secondary/40 border border-border rounded-[2rem] overflow-hidden hover:border-primary/50 transition-colors cursor-pointer group flex flex-col"
@@ -418,7 +521,12 @@ export default function HomePage() {
                   onClick={() => setSelectedVideo(video)}
                 >
                   <div className="aspect-[3/4] relative overflow-hidden bg-slate-800 shrink-0">
-                    <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80" />
+                    <video 
+                      src={`${video.thumbnail}#t=0.001`} 
+                      className="w-full h-full object-cover opacity-80" 
+                      muted 
+                      playsInline 
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent group-hover:bg-black/40 transition-colors" />
                     
                     {/* Hearts Badge */}
@@ -436,7 +544,11 @@ export default function HomePage() {
                   <div className="p-4 md:p-5 text-left flex flex-col flex-1 bg-secondary/20">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-5 h-5 rounded-full bg-slate-800 shrink-0 border border-border flex items-center justify-center overflow-hidden">
-                        <User size={12} className="text-slate-500" />
+                        {video.authorAvatar ? (
+                          <img src={video.authorAvatar} alt="Author" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <User size={12} className="text-slate-500" />
+                        )}
                       </div>
                       <div className="text-xs font-bold text-primary truncate">{video.author}</div>
                     </div>
@@ -471,6 +583,7 @@ export default function HomePage() {
         isOpen={!!selectedVideo}
         onClose={() => setSelectedVideo(null)}
         post={selectedVideo}
+        isJam={true}
       />
     </div>
   );

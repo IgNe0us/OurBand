@@ -208,13 +208,13 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
     }
   };
 
-  const CommentItem = ({ c, depth = 0 }: { c: any; depth?: number }) => {
+  const renderComment = (c: any, depth = 0) => {
     const isEditing = editingComment === c.id;
     const isReplying = replyingTo === c.id;
     const isAuthor = currentUserId === c.authorId;
 
     return (
-      <div className={cn("flex gap-3", depth > 0 && "ml-8 pl-4 border-l-2 border-border/40")}>
+      <div key={c.id} className={cn("flex gap-3", depth > 0 && "ml-8 pl-4 border-l-2 border-border/40")}>
         <div 
           className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-secondary shrink-0 border border-border flex items-center justify-center font-bold text-xs text-white overflow-hidden mt-0.5 cursor-pointer"
           onClick={() => openUserProfile(Number(c.authorId), c.authorName, c.authorProfileImageUrl)}
@@ -313,9 +313,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
 
           {c.replies && c.replies.length > 0 && (
             <div className="mt-4 space-y-4">
-              {c.replies.map((reply: any) => (
-                <CommentItem key={reply.id} c={reply} depth={depth + 1} />
-              ))}
+              {c.replies.map((reply: any) => renderComment(reply, depth + 1))}
             </div>
           )}
         </div>
@@ -391,10 +389,8 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
                     </h3>
 
                     <div className="space-y-6 mb-8">
-                      {post.commentsList.map((comment: any) => (
-                        <CommentItem key={comment.id} c={comment} />
-                      ))}
-                    </div>
+                    {post.commentsList.map((comment: any) => renderComment(comment))}
+                  </div>
                   </div>
                 </div>
               </div>

@@ -38,8 +38,10 @@ export const markNotificationAsReadApi = async (id: number): Promise<void> => {
     await apiClient.put(`/notifications/${id}/read`);
 };
 
-// 4. SSE 구독 URL 반환 (EventSource 용)
 export const getNotificationSubscribeUrl = (): string => {
-    const baseURL = apiClient.defaults.baseURL || 'http://localhost:8082/api/v1';
+    const fallbackURL = typeof window !== 'undefined' 
+        ? `http://${window.location.hostname}:8082/api/v1` 
+        : 'http://localhost:8082/api/v1';
+    const baseURL = apiClient.defaults.baseURL || fallbackURL;
     return `${baseURL}/notifications/subscribe`;
 };

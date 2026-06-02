@@ -1032,6 +1032,25 @@ public class BandService {
             boolean isFollowed = currentUserId != null && finalFollowedIds.contains(band.getId());
             long followerCount = bandFollowRepository.countByBandId(band.getId());
 
+            com.ourband.api.domain.model.BandPost latestVideoPost = bandPostRepository.findFirstByBandIdAndMediaTypeOrderByCreatedAtDesc(band.getId(), "VIDEO");
+            String latestVideoUrl = latestVideoPost != null ? latestVideoPost.getMediaUrl() : null;
+
+            // Find leader (minimum ID member with non-null userId)
+            BandMember leader = members.stream()
+                    .filter(m -> m.getUserId() != null)
+                    .min(java.util.Comparator.comparing(BandMember::getId))
+                    .orElse(null);
+            
+            Long leaderId = null;
+            String leaderProfileImageUrl = null;
+            if (leader != null) {
+                leaderId = leader.getUserId();
+                com.ourband.api.domain.model.Profile leaderProfile = profileRepository.findByUser_UserId(leaderId).orElse(null);
+                if (leaderProfile != null) {
+                    leaderProfileImageUrl = leaderProfile.getProfilePictureUrl();
+                }
+            }
+
             return BandListResponseDTO.builder()
                     .id(band.getId())
                     .name(band.getName())
@@ -1046,6 +1065,9 @@ public class BandService {
                     .isRecruiting(isRecruiting)
                     .isFollowed(isFollowed)
                     .followerCount(followerCount)
+                    .latestVideoUrl(latestVideoUrl)
+                    .leaderId(leaderId)
+                    .leaderProfileImageUrl(leaderProfileImageUrl)
                     .createdAt(band.getCreatedAt())
                     .build();
         });

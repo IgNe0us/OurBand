@@ -13,6 +13,7 @@ export type MemberSeekingPostData = {
   mediaUrl: string | null;
   mediaType: string | null;
   status: string;
+  potential?: number;
   createdAt: string;
   updatedAt: string;
 };

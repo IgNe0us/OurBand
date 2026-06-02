@@ -42,6 +42,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
+        // 1-1. 쿠키에 없으면 쿼리 파라미터에서 찾기 (SSE 통신 등 우회 목적)
+        if (token == null && request.getParameter("token") != null) {
+            token = request.getParameter("token");
+        }
+
         // 2. 토큰 존재 + 유효성 검사
         if (token != null) {
             System.out.println("[JwtAuthFilter] Token found in cookies: " + token);
