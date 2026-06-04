@@ -300,7 +300,7 @@ export default function StudioPage() {
               >
                   <div className="w-28 h-28 bg-slate-800 rounded-xl overflow-hidden shrink-0 relative">
                   {studio.images && studio.images.length > 0 ? (
-                    <img src={studio.images[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Studio" referrerPolicy="no-referrer" />
+                    <img src={typeof studio.images[0] === 'string' ? studio.images[0] : (studio.images[0] as any).imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Studio" referrerPolicy="no-referrer" />
                   ) : studio.isExternal ? (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800 text-slate-500">
                       <MapPin size={24} />

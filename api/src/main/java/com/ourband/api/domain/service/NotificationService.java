@@ -52,6 +52,18 @@ public class NotificationService {
         return emitter;
     }
 
+    @org.springframework.scheduling.annotation.Scheduled(fixedRate = 45000)
+    public void sendHeartbeat() {
+        emitters.forEach((userId, emitter) -> {
+            try {
+                // 더미 데이터(ping)를 보내서 연결 유지 (Nginx 504 Timeout 방지)
+                emitter.send(SseEmitter.event().name("ping").data("keep-alive"));
+            } catch (IOException e) {
+                emitters.remove(userId);
+            }
+        });
+    }
+
     @Transactional
     public void send(Long receiverId, Long senderId, NotificationType type, String targetId, String content) {
         // 테스트 편의상 자기 자신에게도 알림이 가도록 허용 (운영 환경에서는 복구)

@@ -107,6 +107,7 @@ export default function AdminReportsPage() {
       'JAM_COMMENT': '오디오잼 댓글',
       'HISTORY_POST': '프로필 히스토리',
       'HISTORY_COMMENT': '히스토리 댓글',
+      'STUDIO': '합주실 글'
     };
     return typeMap[type] || type;
   };
