@@ -150,6 +150,49 @@ export default function LoginPage() {
             회원가입
           </Link>
         </div>
+
+        {/* Test Admin Accounts for Interviewers */}
+        <div className="mt-8 p-5 bg-secondary/50 backdrop-blur-sm border border-primary/20 rounded-2xl relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+              <Lock size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">관리자 계정 (하단 계정 클릭시 자동입력)</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">빠른 테스트를 위해 제공되는 관리자 계정입니다.</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">유저 계정은 회원가입을 통해 진행해 주세요.</p>
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            <div 
+              className="flex justify-between items-center bg-background/50 p-3 rounded-xl border border-border/50 hover:border-indigo-500/50 transition-colors cursor-pointer group/item" 
+              onClick={() => { setEmail('sys@c.com'); setPassword('netid001'); }}
+            >
+              <div>
+                <div className="text-xs font-bold text-indigo-400 mb-0.5">시스템 관리자</div>
+                <div className="text-xs text-slate-300">sys@c.com</div>
+              </div>
+              <div className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2.5 py-1 rounded-md border border-indigo-500/20 group-hover/item:bg-indigo-500/20 transition-colors">
+                자동 입력
+              </div>
+            </div>
+            
+            <div 
+              className="flex justify-between items-center bg-background/50 p-3 rounded-xl border border-border/50 hover:border-pink-500/50 transition-colors cursor-pointer group/item" 
+              onClick={() => { setEmail('ser@c.com'); setPassword('netid001'); }}
+            >
+              <div>
+                <div className="text-xs font-bold text-pink-400 mb-0.5">서비스 관리자</div>
+                <div className="text-xs text-slate-300">ser@c.com</div>
+              </div>
+              <div className="text-[10px] bg-pink-500/10 text-pink-400 px-2.5 py-1 rounded-md border border-pink-500/20 group-hover/item:bg-pink-500/20 transition-colors">
+                자동 입력
+              </div>
+            </div>
+          </div>
+        </div>
       </motion.div>
     </div>
   );

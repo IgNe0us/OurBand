@@ -4,7 +4,7 @@ import { useContext } from "react";
 // @ts-nocheck
 import { LayoutContext } from "@/components/layout/AppLayout";
 
-import { Play, Heart, MessageCircle, Share2, Plus, Music2, Menu, Pause, X, Copy, Send, Disc, Image as ImageIcon, Video, Mic, Check, ArrowLeft, MoreVertical, Edit3, Trash2, Reply, Volume2, Flag, User } from "lucide-react";
+import { Play, Heart, MessageCircle, Share2, Plus, Music2, Menu, Pause, X, Copy, Send, Disc, Image as ImageIcon, Video, Mic, Check, ArrowLeft, MoreVertical, Edit3, Trash2, Reply, Volume2, VolumeX, Flag, User } from "lucide-react";
 
 import type { LayoutContextType } from "@/components/layout/AppLayout";
 import { useState, useRef, useEffect, useMemo } from "react";
