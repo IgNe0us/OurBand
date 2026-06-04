@@ -1,6 +1,7 @@
 package com.ourband.api.domain.dto.studio;
 
 import lombok.*;
+import java.util.List;
 
 @Getter
 @Setter
@@ -17,4 +18,5 @@ public class StudioListResponseDTO {
     private Double rating;
     private Integer reviewCount;
     private Double distKm;
+    private List<StudioImageDTO> images;
 }

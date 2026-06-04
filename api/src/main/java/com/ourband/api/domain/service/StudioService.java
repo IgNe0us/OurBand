@@ -40,6 +40,14 @@ public class StudioService {
         return studios.stream()
                 .map(studio -> {
                     double distKm = calculateHaversineDistance(lat, lng, studio.getLat(), studio.getLng());
+                    
+                    List<StudioImageDTO> images = studioImageRepository.findByStudioId(studio.getId()).stream()
+                            .map(i -> StudioImageDTO.builder()
+                                    .id(i.getId())
+                                    .imageUrl(i.getImageUrl())
+                                    .build())
+                            .collect(Collectors.toList());
+
                     return StudioListResponseDTO.builder()
                             .id(studio.getId())
                             .name(studio.getName())
@@ -50,6 +58,7 @@ public class StudioService {
                             .rating(studio.getRating())
                             .reviewCount(studio.getReviewCount())
                             .distKm(distKm)
+                            .images(images)
                             .build();
                 })
                 .filter(dto -> dto.getDistKm() <= radiusKm)
