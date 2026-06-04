@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   api:
-    image: ${DOCKER_USERNAME}/ourband-api:latest
+    build: .
     container_name: ourband-api
     ports:
       - "8082:8082"
