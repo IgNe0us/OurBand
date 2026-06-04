@@ -11,6 +11,8 @@ import java.util.List;
 public class StudioResponseDTO {
     private Long id;
     private Long ownerId;
+    private String ownerNickname;
+    private String ownerProfileImageUrl;
     private String name;
     private String address;
     private Double lat;

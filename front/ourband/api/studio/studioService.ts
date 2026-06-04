@@ -21,6 +21,8 @@ export interface StudioData {
   distKm?: number;
   dist?: string;
   ownerId?: number;
+  ownerNickname?: string;
+  ownerProfileImageUrl?: string;
   rooms?: StudioRoomData[];
   images?: string[];
   isExternal?: boolean;

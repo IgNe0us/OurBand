@@ -161,31 +161,37 @@ function JamVideoItem({
         </div>
 
         {/* Top Right Volume Control */}
-        <div 
-          className="absolute right-4 top-24 z-20 flex items-center gap-2 pointer-events-auto"
-          onMouseEnter={() => setShowVolumeSlider(true)}
-          onMouseLeave={() => setShowVolumeSlider(false)}
-        >
-          <AnimatePresence>
-            {showVolumeSlider && (
-              <motion.div 
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 100, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                className="overflow-hidden bg-black/40 backdrop-blur-md rounded-full h-8 flex items-center px-3"
-              >
-                <input 
-                  type="range" 
-                  min="0" max="100" 
-                  value={masterVolume} 
-                  onChange={(e) => setMasterVolume(Number(e.target.value))}
-                  className="w-full accent-primary cursor-pointer"
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-          <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white cursor-pointer hover:bg-black/60 transition-colors">
-            <Volume2 size={20} />
+        <div className="absolute right-4 top-24 z-50 flex items-center group pointer-events-auto">
+          <div className="absolute right-12 w-28 h-10 bg-black/40 backdrop-blur-md rounded-full flex items-center px-3 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+            <input 
+              type="range" 
+              min="0" max="100" 
+              value={masterVolume} 
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setMasterVolume(v);
+                if (videoRef.current) {
+                  videoRef.current.muted = (v === 0);
+                }
+                if (parentVideoRef.current) {
+                  parentVideoRef.current.muted = (v === 0);
+                }
+              }}
+              className="w-full h-1 bg-white/30 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full cursor-pointer"
+            />
+          </div>
+          <div 
+            className="w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors border border-white/10 relative z-10 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              const isMuted = masterVolume === 0;
+              const newVol = isMuted ? 100 : 0;
+              setMasterVolume(newVol);
+              if (videoRef.current) videoRef.current.muted = !isMuted;
+              if (parentVideoRef.current) parentVideoRef.current.muted = !isMuted;
+            }}
+          >
+            {masterVolume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </div>
         </div>
 

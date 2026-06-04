@@ -26,6 +26,7 @@ public class StudioService {
     private final StudioImageRepository studioImageRepository;
     private final StudioRoomRepository studioRoomRepository;
     private final ReportRepository reportRepository;
+    private final com.ourband.api.domain.repository.UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public List<StudioListResponseDTO> getStudiosWithinRadius(double lat, double lng, double radiusKm) {
@@ -86,9 +87,24 @@ public class StudioService {
                         .build())
                 .collect(Collectors.toList());
 
+        String ownerNickname = null;
+        String ownerProfileImageUrl = null;
+        if (studio.getOwnerId() != null) {
+            com.ourband.api.domain.model.User owner = userRepository.findById(studio.getOwnerId()).orElse(null);
+            if (owner != null) {
+                ownerNickname = owner.getNickname();
+            }
+            com.ourband.api.domain.model.Profile ownerProfile = profileRepository.findByUser_UserId(studio.getOwnerId()).orElse(null);
+            if (ownerProfile != null) {
+                ownerProfileImageUrl = ownerProfile.getProfilePictureUrl();
+            }
+        }
+
         return StudioResponseDTO.builder()
                 .id(studio.getId())
                 .ownerId(studio.getOwnerId())
+                .ownerNickname(ownerNickname)
+                .ownerProfileImageUrl(ownerProfileImageUrl)
                 .name(studio.getName())
                 .address(studio.getAddress())
                 .lat(studio.getLat())

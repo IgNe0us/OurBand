@@ -310,10 +310,12 @@ export default function StudioPage() {
                       <Building2 size={24} />
                     </div>
                   )}
-                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-white/10">
-                    <Star size={10} className="text-yellow-400 fill-yellow-400" />
-                    {studio.rating}
-                  </div>
+                  {studio.isExternal && (
+                    <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-white/10">
+                      <Star size={10} className="text-yellow-400 fill-yellow-400" />
+                      {studio.rating}
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col justify-between flex-1 py-1">
                   <div>

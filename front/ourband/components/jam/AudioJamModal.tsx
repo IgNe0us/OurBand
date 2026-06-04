@@ -125,9 +125,20 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
 
   const toggleMute = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsMuted(!isMuted);
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
+    if (volume > 0) {
+      setVolume(0);
+      setIsMuted(true);
+      if (videoRef.current) {
+        videoRef.current.volume = 0;
+        videoRef.current.muted = true;
+      }
+    } else {
+      setVolume(1);
+      setIsMuted(false);
+      if (videoRef.current) {
+        videoRef.current.volume = 1;
+        videoRef.current.muted = false;
+      }
     }
   };
 

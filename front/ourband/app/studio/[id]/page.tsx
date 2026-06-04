@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import { getStudioApi, deleteStudioApi, type StudioData } from "@/api/studio/studioService";
 import { getUserInfoApi } from "@/api/account/userService";
+import { createOrGetRoomApi } from "@/api/chat/chatService";
 import { RegisterStudioModal } from "@/components/studio/RegisterStudioModal";
 import { ReportModal } from "@/components/common/ReportModal";
 import toast from "react-hot-toast";
@@ -102,17 +103,6 @@ export default function StudioIdDynamicPage() {
         >
           <ArrowLeft size={20} />
         </button>
-        <div className="flex gap-2">
-          <button className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white hover:bg-slate-700 transition-colors border border-border">
-            <Share2 size={18} />
-          </button>
-          <button 
-            onClick={() => setIsLiked(!isLiked)}
-            className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white hover:bg-slate-700 transition-colors border border-border"
-          >
-            <Heart size={18} className={cn(isLiked && "fill-rose-500 text-rose-500")} />
-          </button>
-        </div>
       </header>
 
       <main className="px-5 md:px-8 max-w-4xl mx-auto w-full pt-6 relative z-20 space-y-6">
@@ -166,6 +156,20 @@ export default function StudioIdDynamicPage() {
             </div>
             <span className="text-xs text-slate-400 font-medium">리뷰 {studio.reviewCount || 0}개</span>
           </div>
+
+          {/* Author Profile */}
+          {studio.ownerId && studio.ownerNickname && (
+            <div className="flex items-center gap-3 mb-3">
+              <img 
+                src={studio.ownerProfileImageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${studio.ownerNickname}`} 
+                alt="author profile" 
+                className="w-8 h-8 rounded-full object-cover border border-border bg-slate-800"
+                referrerPolicy="no-referrer"
+              />
+              <span className="text-sm font-bold text-slate-300">{studio.ownerNickname}</span>
+            </div>
+          )}
+
           <h1 className="text-2xl md:text-3xl font-black text-white mb-2 leading-tight tracking-tight pr-20">{studio.name}</h1>
           <p className="text-slate-400 text-sm flex items-start gap-1.5 mb-5 font-medium leading-relaxed">
             <MapPin size={16} className="shrink-0 mt-0.5 text-primary" />
@@ -300,7 +304,26 @@ export default function StudioIdDynamicPage() {
           
           <div className="flex gap-2">
             <button 
-              onClick={() => toast.error("1:1 채팅 기능은 준비 중입니다.")}
+              onClick={async () => {
+                if (!currentUserId) {
+                  toast.error("로그인이 필요합니다.");
+                  return;
+                }
+                if (!studio.ownerId) {
+                  toast.error("등록된 작성자가 없습니다.");
+                  return;
+                }
+                if (currentUserId === studio.ownerId) {
+                  toast.error("본인과는 대화할 수 없습니다.");
+                  return;
+                }
+                try {
+                  const roomId = await createOrGetRoomApi(studio.ownerId);
+                  router.push(`/chat/${roomId}`);
+                } catch (err) {
+                  toast.error("채팅방을 생성할 수 없습니다.");
+                }
+              }}
               className="px-5 py-3.5 rounded-xl font-bold text-white text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 border border-slate-600"
             >
               <MessageCircle size={18} />
