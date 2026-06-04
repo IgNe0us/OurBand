@@ -41,7 +41,7 @@ public class UploadController {
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
 
             String fileUrl = "/uploads/" + newFileName;
-            return ResponseEntity.ok(Map.of("url", "http://localhost:8082" + fileUrl, "mediaType", getMediaType(fileExtension)));
+            return ResponseEntity.ok(Map.of("url", "http://152.69.227.244:8082" + fileUrl, "mediaType", getMediaType(fileExtension)));
         } catch (IOException ex) {
             return ResponseEntity.internalServerError().body(Map.of("message", "Could not upload file"));
         }

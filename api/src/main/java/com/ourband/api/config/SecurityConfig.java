@@ -101,7 +101,9 @@ public class SecurityConfig {
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://*:3000",
-            "http://121.154.5.172:3000"
+            "http://121.154.5.172:3000",
+            "http://152.69.227.244:3000",
+            "http://152.69.227.244"
         ));
         
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
