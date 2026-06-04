@@ -174,7 +174,7 @@ export default function BandsList() {
     try {
       const result = await toggleBandFollowApi(bandId);
       setBands(prev => prev.map(b => 
-        b.id === bandId ? { ...b, isFollowed: result.isFollowed, followerCount: result.isFollowed ? b.followerCount + 1 : b.followerCount - 1 } : b
+        b.id === bandId ? { ...b, isFollowed: result.isFollowed, followed: result.isFollowed, followerCount: result.isFollowed ? b.followerCount + 1 : b.followerCount - 1 } : b
       ));
     } catch (err) {
       console.error("팔로우 실패:", err);
@@ -272,7 +272,7 @@ export default function BandsList() {
                   bandFilters.followedOnly ? "bg-rose-500/20 border-rose-500/50 text-rose-400" : "bg-secondary border-border text-slate-300 hover:text-white cursor-pointer"
                 )}
               >
-                <Heart size={14} className={cn(bandFilters.followedOnly && "fill-rose-400")} />
+                <Heart size={14} className={cn(bandFilters.followedOnly && "text-rose-400")} fill={bandFilters.followedOnly ? "currentColor" : "none"} />
                 관심 밴드
               </button>
 
@@ -351,7 +351,11 @@ export default function BandsList() {
                       onClick={(e) => handleToggleFollow(e, band.id)}
                       className="absolute top-4 left-4 z-10 w-10 h-10 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center backdrop-blur-md transition-colors"
                     >
-                      <Heart size={18} className={cn("transition-colors", band.isFollowed ? "fill-rose-500 text-rose-500" : "text-white")} />
+                      <Heart 
+                        size={18} 
+                        className={cn("transition-colors", (band.isFollowed || (band as any).followed) ? "text-rose-500" : "text-white")} 
+                        fill={(band.isFollowed || (band as any).followed) ? "currentColor" : "none"} 
+                      />
                     </button>
 
                     {band.isRecruiting && (
