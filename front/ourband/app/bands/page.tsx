@@ -174,7 +174,7 @@ export default function BandsList() {
     try {
       const result = await toggleBandFollowApi(bandId);
       setBands(prev => prev.map(b => 
-        b.id === bandId ? { ...b, followed: result.isFollowed, followerCount: result.isFollowed ? b.followerCount + 1 : b.followerCount - 1 } : b
+        b.id === bandId ? { ...b, isFollowed: result.isFollowed, followerCount: result.isFollowed ? b.followerCount + 1 : b.followerCount - 1 } : b
       ));
     } catch (err) {
       console.error("팔로우 실패:", err);
