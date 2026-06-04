@@ -51,7 +51,6 @@ export function GlobalNotificationListener() {
         activeTokenRef.current = token;
 
         const url = `${getNotificationSubscribeUrl()}?token=${token}`; 
-        console.log("SSE: Connecting to", url, "Pathname:", pathname);
         
         const eventSource = new EventSource(url, {
             withCredentials: true 
