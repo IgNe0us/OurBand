@@ -24,7 +24,7 @@ jobs:
             cd ~/OurBand
             
             # 1. 최신 코드 가져오기
-            git pull https://${GITHUB_TOKEN}@github.com/${{ github.repository }}.git main
+            git pull https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git main
             
             # 2. 백엔드 빌드 및 재시작 (Docker)
             cd api
