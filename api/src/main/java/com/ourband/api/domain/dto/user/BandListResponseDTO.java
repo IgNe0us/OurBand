@@ -1,5 +1,6 @@
 package com.ourband.api.domain.dto.user;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,7 +21,9 @@ public class BandListResponseDTO {
     private String meetingSchedule;
     private int memberCount;
     private List<RecruitingPosition> recruitingPositions;
+    @JsonProperty("isRecruiting")
     private boolean isRecruiting;
+    @JsonProperty("isFollowed")
     private boolean isFollowed;
     private long followerCount;
     private LocalDateTime createdAt;

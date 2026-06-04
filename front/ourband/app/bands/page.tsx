@@ -173,8 +173,9 @@ export default function BandsList() {
     e.stopPropagation();
     try {
       const result = await toggleBandFollowApi(bandId);
+      console.log('toggleFollow result:', result);
       setBands(prev => prev.map(b => 
-        b.id === bandId ? { ...b, isFollowed: result.isFollowed, followed: result.isFollowed, followerCount: result.isFollowed ? b.followerCount + 1 : b.followerCount - 1 } : b
+        b.id === bandId ? { ...b, isFollowed: result.isFollowed, followerCount: result.isFollowed ? b.followerCount + 1 : b.followerCount - 1 } : b
       ));
     } catch (err) {
       console.error("팔로우 실패:", err);
@@ -353,8 +354,8 @@ export default function BandsList() {
                     >
                       <Heart 
                         size={18} 
-                        className={cn("transition-colors", (band.isFollowed || (band as any).followed) ? "text-rose-500" : "text-white")} 
-                        fill={(band.isFollowed || (band as any).followed) ? "currentColor" : "none"} 
+                        className={cn("transition-colors", band.isFollowed ? "text-rose-500" : "text-white")} 
+                        fill={band.isFollowed ? "currentColor" : "none"} 
                       />
                     </button>
 
