@@ -13,126 +13,13 @@ import React, { useState, useRef, useEffect } from "react";
 import { type VideoPost } from "@/components/band/VideoPostModal";
 import { cn } from "@/lib/utils";
 
-import { MOCK_TRENDING_BANDS } from "@/lib/mockData";
+// MOCK data removed to ensure it is not used as fallback.
 import toast from "react-hot-toast";
 
 import { getTrendingBandsApi, getTrendingJamsApi } from "@/api/trend/trendApi";
 import { getBandProfileApi, toggleBandFollowApi } from "@/api/band/bandService";
 
 type PopularJamVideo = VideoPost & { likes: number; author: string; inst?: string; style?: string };
-
-const MOCK_POPULAR_VIDEOS: PopularJamVideo[] = [
-  {
-    id: "p1",
-    title: "여기에 기타 솔로 얹어주실 분! 🎸",
-    date: "2023.11.20",
-    author: "드럼머신",
-    thumbnail: "https://picsum.photos/seed/jamimg1/400/800",
-    description: "TomMisch스타일 백킹트랙입니다. 기타 솔로 추가해주세요!",
-    likes: 12450,
-    inst: "기타",
-    style: "TomMisch스타일"
-  },
-  {
-    id: "p2",
-    title: "이 진행에 탑라인(멜로디) 짜주세요",
-    date: "2024.03.15",
-    author: "비트메이커",
-    thumbnail: "https://picsum.photos/seed/jamimg2/400/800",
-    description: "R&B 진행입니다. 탑라인 짜주실 보컬 찾습니다.",
-    likes: 8320,
-    inst: "보컬",
-    style: "R&B"
-  },
-  {
-    id: "p3",
-    title: "펑키한 베이스 리프 쳐봤습니다 잼 환영!",
-    date: "2023.11.01",
-    author: "슬랩장인",
-    thumbnail: "https://picsum.photos/seed/jamimg3/400/800",
-    description: "같이 펑크 잼 하실 분 구합니다.",
-    likes: 5420,
-    inst: "베이스",
-    style: "Funk"
-  },
-  {
-    id: "p4",
-    title: "재즈 피아노 보이싱 연습중",
-    date: "2023.10.15",
-    author: "건반러버",
-    thumbnail: "https://picsum.photos/seed/jamimg4/400/800",
-    description: "투파이브원 보이싱 연습중입니다. 피드백 부탁드려요.",
-    likes: 3210,
-    inst: "건반",
-    style: "Jazz"
-  },
-  {
-    id: "p5",
-    title: "슬로우 잼 기타 코러스라인",
-    date: "2024.01.12",
-    author: "톤메이커",
-    thumbnail: "https://picsum.photos/seed/jamimg5/400/800",
-    description: "잔잔한 코러스톤으로 백킹해봤습니다. 감성 보컬 환영",
-    likes: 2150,
-    inst: "기타",
-    style: "Neo Soul"
-  },
-  {
-    id: "p6",
-    title: "드럼 필인 폭격🔥",
-    date: "2024.02.05",
-    author: "드럼머신러버",
-    thumbnail: "https://picsum.photos/seed/jamimg6/400/800",
-    description: "비트 위에 필인 연습한 거 올려요. 베이스 얹어주세요!",
-    likes: 7420,
-    inst: "드럼",
-    style: "Rock"
-  },
-  {
-    id: "p7",
-    title: "어쿠스틱 기타 핑거스타일",
-    date: "2024.03.01",
-    author: "통기타죠아",
-    thumbnail: "https://picsum.photos/seed/jamimg7/400/800",
-    description: "자작곡 인트로 구상중입니다. 멜로디 추천받아요",
-    likes: 1980,
-    inst: "어쿠스틱 기타",
-    style: "Acoustic"
-  },
-  {
-    id: "p8",
-    title: "뉴진스 - Hype Boy 베이스 커버",
-    date: "2024.04.10",
-    author: "슬랩할래",
-    thumbnail: "https://picsum.photos/seed/jamimg8/400/800",
-    description: "루프스테이션 위에서 베이스 쳐봤습니다.",
-    likes: 11020,
-    inst: "베이스",
-    style: "K-Pop"
-  },
-  {
-    id: "p9",
-    title: "EDM 신스 리드",
-    date: "2024.04.15",
-    author: "신스유저",
-    thumbnail: "https://picsum.photos/seed/jamimg9/400/800",
-    description: "페스티벌 느낌나는 신스 리드 만들었습니다. 드럼 비트 붙여주세요!",
-    likes: 4500,
-    inst: "신디사이저",
-    style: "EDM"
-  },
-  {
-    id: "p10",
-    title: "밤에 듣기 좋은 로파이 피아노",
-    date: "2024.04.18",
-    author: "피아노맨",
-    thumbnail: "https://picsum.photos/seed/jamimg10/400/800",
-    description: "칠한 바이브의 로파이 피아노입니다. 아무 트리블이나 올려주세요",
-    likes: 6700,
-    inst: "건반",
-    style: "Lo-Fi"
-  }
-];
 
 export default function HomePage() {
   const { openMenu } = useContext(LayoutContext);

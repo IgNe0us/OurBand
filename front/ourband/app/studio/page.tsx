@@ -215,7 +215,7 @@ export default function StudioPage() {
                 <span className="bg-gradient-to-r from-red-600 to-rose-600 text-white text-[11px] font-black px-2.5 py-1 rounded-md tracking-wider uppercase">SOS</span>
                 <h3 className="font-bold text-lg md:text-xl text-white">당일 펑크 타파, 긴급 용병!</h3>
               </div>
-              <p className="text-sm text-slate-400 mb-6 w-4/5 md:w-2/3 leading-relaxed">반경 10km 내 상위 랭킹 세션에게 즉시 푸시 알림을 발송합니다.</p>
+              <p className="text-sm text-slate-400 mb-6 w-4/5 md:w-2/3 leading-relaxed">선택하신 지역 내 세션에게 즉시 푸시 알림을 발송합니다.</p>
               <button 
                 onClick={() => setIsSOSModalOpen(true)}
                 className="bg-white hover:bg-slate-100 text-red-600 font-black px-6 py-3.5 rounded-xl text-sm w-full md:w-auto shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all flex justify-center items-center gap-2"
@@ -495,7 +495,7 @@ export default function StudioPage() {
                 </div>
                 <div>
                   <h2 className="text-2xl font-black text-white">긴급 세션 수배</h2>
-                  <p className="text-xs text-slate-400 mt-1">반경 10km 내 관련 포지션 유저에게 푸시 발송</p>
+                  <p className="text-xs text-slate-400 mt-1">선택한 지역 내 관련 포지션 유저에게 푸시 발송</p>
                 </div>
               </div>
               
