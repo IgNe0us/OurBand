@@ -173,11 +173,11 @@ export default function HomePage() {
             setFollowedBands(prev => [...new Set([...prev, ...followedIds])]);
           }
         } else {
-          setTrendingBands(MOCK_TRENDING_BANDS);
+          setTrendingBands([]);
         }
       } catch (e) {
         console.error(e);
-        setTrendingBands(MOCK_TRENDING_BANDS);
+        setTrendingBands([]);
       }
       
       try {
@@ -207,11 +207,11 @@ export default function HomePage() {
           }));
           setPopularVideos(mappedJams);
         } else {
-          setPopularVideos(MOCK_POPULAR_VIDEOS);
+          setPopularVideos([]);
         }
       } catch (e) {
         console.error(e);
-        setPopularVideos(MOCK_POPULAR_VIDEOS);
+        setPopularVideos([]);
       }
     };
     fetchTrends();
@@ -373,6 +373,7 @@ export default function HomePage() {
 
       <div className="p-6 md:p-8 space-y-12 pb-24">
         {/* Trending Bands */}
+        {trendingBands.length > 0 && (
         <section className="relative group/section">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-white">
@@ -395,7 +396,7 @@ export default function HomePage() {
               ref={trendingRef}
               className="flex overflow-x-auto gap-6 hide-scrollbar pb-6 -mx-6 px-6 md:mx-0 md:px-0"
             >
-              {(trendingBands.length > 0 ? trendingBands : MOCK_TRENDING_BANDS).map((band: any) => (
+              {trendingBands.map((band: any) => (
                 <motion.div 
                   key={band.id} 
                   className="w-[85vw] max-w-[320px] sm:max-w-[350px] md:w-[320px] md:max-w-none bg-secondary rounded-[2rem] overflow-hidden shadow-2xl border border-border shrink-0 group relative cursor-pointer"
@@ -489,8 +490,10 @@ export default function HomePage() {
             </button>
           </div>
         </section>
+        )}
 
         {/* Popular Jam Videos */}
+        {popularVideos.length > 0 && (
         <section className="relative group/section">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-white">
@@ -513,7 +516,7 @@ export default function HomePage() {
               ref={videoRef}
               className="flex overflow-x-auto gap-4 md:gap-6 hide-scrollbar pb-6 -mx-6 px-6 md:mx-0 md:px-0"
             >
-              {(popularVideos.length > 0 ? popularVideos : MOCK_POPULAR_VIDEOS).map((video: any) => (
+              {popularVideos.map((video: any) => (
                 <motion.div 
                   key={video.id} 
                   className="w-[60vw] max-w-[240px] md:w-[240px] md:max-w-none shrink-0 bg-secondary/40 border border-border rounded-[2rem] overflow-hidden hover:border-primary/50 transition-colors cursor-pointer group flex flex-col"
@@ -569,6 +572,7 @@ export default function HomePage() {
             </button>
           </div>
         </section>
+        )}
       </div>
 
       {/* Band Preview Modal */}
