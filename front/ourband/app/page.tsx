@@ -6,7 +6,7 @@ import { AudioJamModal } from "@/components/jam/AudioJamModal";
 // @ts-nocheck
 import { LayoutContext } from "@/components/layout/AppLayout";
 
-import { Play, TrendingUp, Star, MapPin, Search, Menu, Video, Heart, ChevronLeft, ChevronRight, User } from "lucide-react";
+import { Play, TrendingUp, Star, MapPin, Search, Menu, Video, Heart, ChevronLeft, ChevronRight, User, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import React, { useState, useRef, useEffect } from "react";
@@ -292,7 +292,11 @@ export default function HomePage() {
                   onClick={() => handleBandClick(band)}
                 >
                   <div className="relative h-48 bg-slate-800">
-                    <img src={band.coverImage} alt="Band cover" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" referrerPolicy="no-referrer" />
+                    {band.coverImage ? (
+                      <img src={band.coverImage} alt="Band cover" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-secondary via-black/40 to-transparent" />
                     
                     {/* Live / Status Badge */}
@@ -305,8 +309,12 @@ export default function HomePage() {
                     
                     {/* Band Name in Cover */}
                     <div className="absolute bottom-4 left-4 flex items-center gap-3 w-full pr-8">
-                      <div className="w-12 h-12 rounded-2xl border-2 border-background shadow-xl overflow-hidden shrink-0 bg-slate-800">
-                        <img src={band.logoImage} alt="Logo" referrerPolicy="no-referrer" />
+                      <div className="w-12 h-12 rounded-2xl border-2 border-background shadow-xl overflow-hidden shrink-0 bg-slate-800 flex items-center justify-center">
+                        {band.logoImage ? (
+                          <img src={band.logoImage} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <Users className="text-slate-500" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-xl font-black text-white leading-tight drop-shadow-md truncate">{band.name}</h4>
@@ -325,16 +333,18 @@ export default function HomePage() {
                     
                     <div className="flex items-center gap-2 mb-4 mt-2">
                       <div className="flex -space-x-2">
-                        {band.memberProfileUrls?.slice(0, 4).map((url: string, i: number) => (
-                          <div key={`${band.id}-member-${i}`} className="w-8 h-8 rounded-full border-2 border-secondary bg-slate-800 overflow-hidden relative group-hover:z-10 group-hover:ring-2 group-hover:ring-primary transition-all">
-                            <img src={url} alt="Member" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          </div>
-                        ))}
-                        {(!band.memberProfileUrls || band.memberProfileUrls.length === 0) && (
-                          <div className="w-8 h-8 rounded-full border-2 border-secondary bg-slate-700 flex items-center justify-center">
-                            <User size={14} className="text-slate-400" />
-                          </div>
-                        )}
+                        {Array.from({ length: Math.min(band.memberCount || 1, 4) }).map((_, i) => {
+                          const url = band.memberProfileUrls?.[i];
+                          return (
+                            <div key={`${band.id}-member-${i}`} className="w-8 h-8 rounded-full border-2 border-secondary bg-slate-800 overflow-hidden relative group-hover:z-10 group-hover:ring-2 group-hover:ring-primary transition-all flex items-center justify-center">
+                              {url ? (
+                                <img src={url} alt="Member" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                <User size={14} className="text-slate-500" />
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                       <span className="text-xs text-slate-400 font-medium ml-1">{band.memberCount || 0}명 멤버</span>
                     </div>
