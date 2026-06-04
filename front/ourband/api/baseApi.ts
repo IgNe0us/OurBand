@@ -6,7 +6,7 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 // =======================================
 //const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:8082/api/v1';
 const BASE_URL = typeof window !== 'undefined' 
-    ? `http://${window.location.hostname}:8082/api/v1` 
+    ? (window.location.hostname.includes('ourband.o-r.kr') ? 'https://ourband.o-r.kr/api/v1' : `http://${window.location.hostname}:8082/api/v1`) 
     : 'http://localhost:8082/api/v1';
 
 export const apiClient: AxiosInstance = axios.create({

@@ -138,9 +138,7 @@ export default function RegisterPage() {
     let captchaToken = recaptchaRef.current?.getValue();
     if (!captchaToken) {
       try {
-        // IP 환경 테스트를 위해 리캡챠를 우회합니다.
-        captchaToken = "bypass_for_testing";
-        // captchaToken = await recaptchaRef.current?.executeAsync();
+        captchaToken = await recaptchaRef.current?.executeAsync();
       } catch (e) {
         setError("캡차 인증 중 오류가 발생했습니다.");
         return;
