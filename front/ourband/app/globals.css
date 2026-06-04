@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 @source "../../src";
 
 @theme {
@@ -40,5 +41,10 @@ html, body, #root, #__next {
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
   }
+}
+
+/* Hide Google reCAPTCHA badge */
+.grecaptcha-badge { 
+  visibility: hidden !important; 
 }
 

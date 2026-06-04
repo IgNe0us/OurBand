@@ -1,0 +1,58 @@
+name: CI/CD Backend Deployment (ARM64)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'api/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v3
+
+    # QEMU 및 Buildx 세팅 (ARM64 빌드용)
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and Push Docker Image (ARM64)
+      uses: docker/build-push-action@v4
+      with:
+        context: ./api
+        push: true
+        platforms: linux/arm64
+        tags: ${{ secrets.DOCKER_USERNAME }}/ourband-api:latest
+
+    - name: Deploy to Oracle Cloud
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.ORACLE_HOST }}
+        username: ubuntu
+        key: ${{ secrets.ORACLE_PRIVATE_KEY }}
+        script: |
+          mkdir -p ~/ourband-deploy
+          cd ~/ourband-deploy
+          
+          echo "DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}" > .env
+          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          echo "DB_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }}" >> .env
+          echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" >> .env
+          
+          docker pull ${{ secrets.DOCKER_USERNAME }}/ourband-api:latest
+          
+          docker-compose down
+          docker-compose up -d
+          
+          docker image prune -af

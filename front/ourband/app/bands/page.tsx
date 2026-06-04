@@ -351,10 +351,10 @@ export default function BandsList() {
                       onClick={(e) => handleToggleFollow(e, band.id)}
                       className="absolute top-4 left-4 z-10 w-10 h-10 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center backdrop-blur-md transition-colors"
                     >
-                      <Heart size={18} className={cn("transition-colors", band.followed ? "fill-rose-500 text-rose-500" : "text-white")} />
+                      <Heart size={18} className={cn("transition-colors", band.isFollowed ? "fill-rose-500 text-rose-500" : "text-white")} />
                     </button>
 
-                    {band.recruiting && (
+                    {band.isRecruiting && (
                       <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs border border-border shadow-lg">
                         <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
                         <span className="font-bold text-white tracking-wider">구인 중</span>

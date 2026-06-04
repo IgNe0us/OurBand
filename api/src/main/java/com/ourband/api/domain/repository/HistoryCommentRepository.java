@@ -10,5 +10,6 @@ public interface HistoryCommentRepository extends JpaRepository<HistoryComment, 
     
     // 계층형 댓글 조회용
     List<HistoryComment> findByHistoryIdAndParentIdIsNullOrderByCreatedAtAsc(Long historyId);
+    List<HistoryComment> findByHistoryIdOrderByCreatedAtAsc(Long historyId);
     List<HistoryComment> findByParentIdOrderByCreatedAtAsc(Long parentId);
 }

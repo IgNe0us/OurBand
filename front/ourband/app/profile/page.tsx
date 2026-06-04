@@ -412,10 +412,13 @@ export default function ProfilePage() {
         const history = profileData.histories.find((h: any) => h.id === Number(historyId));
         if (history) {
           setSelectedHistory(history);
+        } else {
+          toast.error("관리자에 의해 숨겨진 게시글입니다.");
+          router.replace('/profile');
         }
       }
     }
-  }, [profileData, searchParams]);
+  }, [profileData, searchParams, router]);
 
   const handlePublishToJam = async (history: History) => {
     if (!history.mediaUrl) return;

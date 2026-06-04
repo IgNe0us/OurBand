@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  api:
+    image: ${DOCKER_USERNAME}/ourband-api:latest
+    container_name: ourband-api
+    ports:
+      - "8082:8082"
+    restart: always
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      # 데이터베이스(MariaDB) 정보
+      - DB_URL=jdbc:mariadb://ourband-db:3306/ourband?localInfile=true&authConfigurations=MariaDbPassword
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      # Redis 정보
+      - REDIS_HOST=ourband-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: mariadb:10.11
+    container_name: ourband-db
+    ports:
+      - "3306:3306"
+    restart: always
+    environment:
+      - MARIADB_DATABASE=ourband
+      - MARIADB_USER=${DB_USERNAME}
+      - MARIADB_PASSWORD=${DB_PASSWORD}
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+    volumes:
+      - db-data:/var/lib/mysql
+
+  redis:
+    image: redis:alpine
+    container_name: ourband-redis
+    ports:
+      - "6379:6379"
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+
+volumes:
+  db-data:

@@ -177,18 +177,4 @@ public class CommunityController {
                     .body(Map.of("message", e.getMessage()));
         }
     }
-
-    @PostMapping("/reports")
-    public ResponseEntity<?> createReport(
-            @CookieValue(value = "access_token") String accessToken,
-            @RequestBody ReportCreateRequestDTO request) {
-        try {
-            Long currentUserId = jwtUtil.getUserId(accessToken);
-            communityService.createReport(currentUserId, request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("message", "신고가 접수되었습니다."));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        }
-    }
 }

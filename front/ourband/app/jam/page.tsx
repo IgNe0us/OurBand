@@ -4,7 +4,7 @@ import { useContext } from "react";
 // @ts-nocheck
 import { LayoutContext } from "@/components/layout/AppLayout";
 
-import { Play, Heart, MessageCircle, Share2, Plus, Music2, Menu, Pause, X, Copy, Send, Disc, Image as ImageIcon, Video, Mic, Check, ArrowLeft, MoreVertical, Edit3, Trash2, Reply, Volume2 } from "lucide-react";
+import { Play, Heart, MessageCircle, Share2, Plus, Music2, Menu, Pause, X, Copy, Send, Disc, Image as ImageIcon, Video, Mic, Check, ArrowLeft, MoreVertical, Edit3, Trash2, Reply, Volume2, Flag, User } from "lucide-react";
 
 import type { LayoutContextType } from "@/components/layout/AppLayout";
 import { useState, useRef, useEffect, useMemo } from "react";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";;
 import { motion, AnimatePresence } from "motion/react";
 
 import { searchJamPostsApi, createJamPostApi, toggleJamLikeApi, getJamCommentsApi, createJamCommentApi, incrementJamShareApi, type JamPostData, updateJamCommentApi, deleteJamCommentApi, getJamPostApi } from "@/api/jam/jamService";
+import { ReportModal } from "@/components/common/ReportModal";
 import { getUserInfoApi, toggleFollowApi } from "@/api/account/userService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
 import { useUserProfile } from "@/store/userProfileContext";
@@ -34,6 +35,7 @@ function JamVideoItem({
   comments,
   setActiveShareId,
   setActiveDuetId,
+  setReportTarget,
 
   onVisible,
   openUserProfile
@@ -187,7 +189,7 @@ function JamVideoItem({
           </div>
         </div>
 
-        <div className="absolute right-4 bottom-28 md:bottom-32 flex flex-col items-center gap-7 z-10 pointer-events-auto">
+        <div className="absolute right-4 bottom-28 md:bottom-32 flex flex-col items-center gap-4 z-10 pointer-events-auto">
           <div className="relative">
             <div 
               className="w-12 h-12 rounded-full border-[3px] border-white overflow-hidden shadow-lg cursor-pointer bg-slate-800"
@@ -257,16 +259,36 @@ function JamVideoItem({
             <span className="text-white text-xs font-semibold drop-shadow-md">{v.shareCount || 0}</span>
           </button>
 
+          {String(v.userId) !== String(currentUserId) && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); setReportTarget({ type: 'JAM_POST', id: v.id, name: '오디오잼' }); }}
+              className="mt-2 flex flex-col items-center gap-1.5 group"
+            >
+              <div className="w-12 h-12 bg-background/20 backdrop-blur-md rounded-full flex items-center justify-center border border-border group-hover:bg-rose-500/20 transition-colors">
+                <Flag size={20} className="text-white/80 group-hover:text-rose-500 transition-colors" />
+              </div>
+            </button>
+          )}
+
           {/* Jam Button - Core Feature */}
-          <button 
-            onClick={() => setActiveDuetId(v.id)}
-            className="mt-4 flex flex-col items-center gap-1 group"
-          >
-            <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.5)] group-hover:scale-110 transition-transform cursor-pointer border-2 border-white/20">
-              <Music2 size={24} className="text-white fill-white" />
+          {v.parentId ? (
+            <div className="mt-4 flex flex-col items-center gap-1 opacity-50 grayscale select-none">
+              <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center border-2 border-white/10">
+                <Music2 size={24} className="text-slate-400" />
+              </div>
+              <span className="font-black text-slate-400 text-[10px] tracking-widest mt-1">DUETED</span>
             </div>
-            <span className="font-black text-white text-[10px] tracking-widest mt-1">DUET</span>
-          </button>
+          ) : (
+            <button 
+              onClick={() => setActiveDuetId(v.id)}
+              className="mt-4 flex flex-col items-center gap-1 group"
+            >
+              <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.5)] group-hover:scale-110 transition-transform cursor-pointer border-2 border-white/20">
+                <Music2 size={24} className="text-white fill-white" />
+              </div>
+              <span className="font-black text-white text-[10px] tracking-widest mt-1">DUET</span>
+            </button>
+          )}
         </div>
 
         {/* Bottom Info */}
@@ -351,8 +373,14 @@ export default function JamPage() {
            try {
              const specificVideo = await getJamPostApi(Number(jamIdParam));
              initialVideos.push(specificVideo);
-           } catch (e) {
-             console.error("Failed to fetch specific jam video", e);
+           } catch (e: any) {
+             if (e.response?.data?.errorCode === 'CONTENT_HIDDEN') {
+               toast.error("관리자에 의해 숨겨진 게시글입니다.");
+               // url 파라미터 지우기
+               router.replace('/jam');
+             } else {
+               console.error("Failed to fetch specific jam video", e);
+             }
            }
         }
         
@@ -477,6 +505,7 @@ export default function JamPage() {
   const [editingComment, setEditingComment] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [comments, setComments] = useState<Record<number, any[]>>({});
+  const [reportTarget, setReportTarget] = useState<{ type: string, id: string | number, name: string } | null>(null);
 
   // Duet recording states
   const [isRecording, setIsRecording] = useState(false);
@@ -819,6 +848,7 @@ export default function JamPage() {
           comments={comments}
           setActiveShareId={setActiveShareId}
           setActiveDuetId={setActiveDuetId}
+          setReportTarget={setReportTarget}
           onVisible={setPlayingId}
           openUserProfile={openUserProfile}
         />
@@ -828,198 +858,139 @@ export default function JamPage() {
       <AnimatePresence>
         {/* Comments Modal (Bottom Sheet style) */}
         {activeCommentId && (
-          <motion.div key="comment-modal" 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
-            onClick={() => setActiveCommentId(null)}
-          >
-            <motion.div 
-              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              onClick={e => e.stopPropagation()} 
-              className="bg-secondary w-full max-w-xl h-[70vh] rounded-t-3xl border-t border-border flex flex-col shadow-2xl relative"
+          <div className="fixed inset-0 z-50 flex justify-center pointer-events-none md:pl-64 lg:pl-72">
+            <motion.div key="comment-modal-container" 
+              className="relative w-full max-w-xl h-full flex items-end bg-black/60 backdrop-blur-sm pointer-events-auto overflow-hidden"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setActiveCommentId(null)}
             >
-              <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
-                <h3 className="font-bold text-white">댓글 <span className="text-primary">{videos.find(v => v.id === activeCommentId)?.commentCount || 0}</span></h3>
-                <button onClick={() => setActiveCommentId(null)} className="p-1 text-slate-400 hover:text-white"><X size={20} /></button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {(comments[activeCommentId] || []).map((c: any) => (
-                  <div key={`jam-comment-${c.id}`} className="flex flex-col gap-3">
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 border border-border overflow-hidden mt-0.5">
-                        {c.authorProfileImageUrl ? (
-                          <img src={c.authorProfileImageUrl} alt="user" referrerPolicy="no-referrer" />
-                        ) : (
-                          <div className="w-full h-full flex justify-center items-center font-bold text-white text-xs">{c.authorName?.[0]}</div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-sm font-bold text-slate-300">{c.authorName}</span>
-                            <span className="text-[10px] text-slate-500">
-                              {new Date(c.createdAt).toLocaleDateString()}
-                            </span>
-                            {c.updatedAt && c.createdAt && c.updatedAt !== c.createdAt && (
-                              <span className="text-[10px] text-slate-500 italic">(수정됨)</span>
+              <motion.div 
+                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                onClick={e => e.stopPropagation()} 
+                className="bg-secondary w-full h-[70%] rounded-t-3xl border-t border-border flex flex-col shadow-2xl relative mx-auto"
+              >
+                <div className="flex items-center justify-between p-5 border-b border-border shrink-0">
+                  <h3 className="text-lg font-black text-white">댓글 <span className="text-primary text-sm ml-1">{videos.find(v => v.id === activeCommentId)?.commentCount || 0}</span></h3>
+                  <button onClick={() => { setActiveCommentId(null); setReplyingTo(null); setEditingComment(null); setCommentText(''); }} className="text-slate-400 hover:text-white"><X size={20} /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5 pb-8 hide-scrollbar">
+                  {(() => {
+                    const flattenComments = (commentsList: any[], depth = 0): any[] => {
+                      return commentsList.reduce((acc, c) => {
+                        acc.push({ ...c, depth });
+                        if (c.replies && c.replies.length > 0) {
+                          acc.push(...flattenComments(c.replies, depth + 1));
+                        }
+                        return acc;
+                      }, []);
+                    };
+
+                    const renderComment = (c: any) => {
+                      const effectiveDepth = c.depth === 0 ? 0 : ((c.depth - 1) % 4) + 1;
+                      const isRoot = c.depth === 0;
+                      const isReply = effectiveDepth > 0;
+                      
+                      return (
+                        <div 
+                          key={`comment-${c.id}`} 
+                          style={{ marginLeft: isReply ? `${effectiveDepth * 2.5}rem` : '0' }}
+                          className={cn("flex gap-3 group relative", isRoot ? "mt-5" : "mt-3", isReply ? "before:absolute before:-left-5 before:top-4 before:w-4 before:h-px before:bg-border before:content-['']" : "")}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 border border-border flex items-center justify-center overflow-hidden mt-0.5">
+                            {c.authorProfileImageUrl ? (
+                              <img src={c.authorProfileImageUrl} alt={c.authorName} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                            ) : (
+                              <User size={16} className="text-slate-500" />
                             )}
                           </div>
-                          <div className="flex items-center gap-0.5">
-                            <button 
-                              onClick={() => { setReplyingTo({id: c.id, authorName: c.authorName}); setEditingComment(null); }}
-                              className="text-slate-500 hover:text-primary transition-colors p-1.5 rounded-md hover:bg-white/5"
-                              title="답글"
-                            >
-                              <Reply size={13} />
-                            </button>
-                            {currentUserId === c.authorId && (
-                              <>
-                                <button
-                                  onClick={() => { setEditingComment(c.id); setEditText(c.content); setReplyingTo(null); }}
-                                  className="text-slate-500 hover:text-primary transition-colors p-1.5 rounded-md hover:bg-white/5"
-                                  title="수정"
-                                >
-                                  <Edit3 size={13} />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteComment(activeCommentId, c.id)}
-                                  className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5"
-                                  title="삭제"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        {editingComment === c.id ? (
-                          <div className="mt-2 flex gap-2 items-start">
-                            <textarea
-                              value={editText}
-                              onChange={(e) => setEditText(e.target.value)}
-                              className="flex-1 bg-secondary/60 border border-border rounded-lg p-2 text-sm text-white resize-none outline-none focus:border-primary transition-colors"
-                              rows={2}
-                              autoFocus
-                            />
-                            <div className="flex flex-col gap-1">
-                              <button onClick={() => handleEditComment(activeCommentId, c.id)} className="text-primary hover:text-indigo-400 p-1" title="저장">
-                                <Check size={16} />
-                              </button>
-                              <button onClick={() => setEditingComment(null)} className="text-slate-400 hover:text-white p-1" title="취소">
-                                <X size={16} />
-                              </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-300">{c.authorName}</span>
+                              <span className="text-[10px] text-slate-500">{new Date(c.createdAt).toLocaleDateString()} {c.updatedAt && c.createdAt && c.updatedAt !== c.createdAt && "(수정됨)"}</span>
                             </div>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-white whitespace-pre-wrap">{c.content}</p>
-                        )}
-                      </div>
-                    </div>
-                    {c.replies && c.replies.length > 0 && (
-                      <div className="pl-11 space-y-3 mt-1">
-                        {c.replies.map((reply: any) => (
-                          <div key={`jam-reply-${reply.id}`} className="flex gap-3">
-                            <div className="w-6 h-6 rounded-full bg-slate-800 shrink-0 border border-border overflow-hidden mt-0.5">
-                              {reply.authorProfileImageUrl ? (
-                                <img src={reply.authorProfileImageUrl} alt="user" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex justify-center items-center font-bold text-white text-[10px]">{reply.authorName?.[0]}</div>
+                            <div className="group-hover:opacity-100 transition-opacity flex gap-2">
+                                <button onClick={() => {setReplyingTo({ id: c.id, authorName: c.authorName }); setEditingComment(null); setCommentText('');}} className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5" title="답글">
+                                  <Reply size={13} />
+                                </button>
+                              {c.authorId === currentUserId && (
+                                <>
+                                  <button onClick={() => {setEditingComment(c.id); setEditText(c.content); setReplyingTo(null);}} className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5" title="수정">
+                                    <Edit3 size={13} />
+                                  </button>
+                                  {(!c.replies || c.replies.length === 0) && (
+                                    <button onClick={() => handleDeleteComment(activeCommentId, c.id)} className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5" title="삭제">
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {c.authorId !== currentUserId && (
+                                <button onClick={() => setReportTarget({ type: 'JAM_COMMENT', id: c.id, name: '댓글' })} className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5" title="신고">
+                                  <Flag size={13} />
+                                </button>
                               )}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex justify-between items-start">
-                                <div className="flex items-center gap-2 mb-0.5">
-                                  <span className="text-sm font-bold text-slate-300">{reply.authorName}</span>
-                                  <span className="text-[10px] text-slate-500">
-                                    {new Date(reply.createdAt).toLocaleDateString()}
-                                  </span>
-                                  {reply.updatedAt && reply.createdAt && reply.updatedAt !== reply.createdAt && (
-                                    <span className="text-[10px] text-slate-500 italic">(수정됨)</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-0.5">
-                                  {currentUserId === reply.authorId && (
-                                    <>
-                                      <button
-                                        onClick={() => { setEditingComment(reply.id); setEditText(reply.content); setReplyingTo(null); }}
-                                        className="text-slate-500 hover:text-primary transition-colors p-1.5 rounded-md hover:bg-white/5"
-                                        title="수정"
-                                      >
-                                        <Edit3 size={13} />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteComment(activeCommentId, reply.id)}
-                                        className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5"
-                                        title="삭제"
-                                      >
-                                        <Trash2 size={13} />
-                                      </button>
-                                    </>
-                                  )}
+                          </div>
+                          {editingComment === c.id ? (
+                              <div className="mt-2 flex gap-2 items-start">
+                                <textarea
+                                  value={editText}
+                                  onChange={(e) => setEditText(e.target.value)}
+                                  className="flex-1 bg-secondary/60 border border-border rounded-lg p-2 text-sm text-white resize-none outline-none focus:border-primary transition-colors"
+                                  rows={2}
+                                  autoFocus
+                                />
+                                <div className="flex flex-col gap-1">
+                                  <button onClick={() => handleEditComment(activeCommentId, c.id)} className="text-primary hover:text-indigo-400 p-1" title="저장">
+                                    <Check size={16} />
+                                  </button>
+                                  <button onClick={() => setEditingComment(null)} className="text-slate-400 hover:text-white p-1" title="취소">
+                                    <X size={16} />
+                                  </button>
                                 </div>
                               </div>
-                              {editingComment === reply.id ? (
-                                <div className="mt-2 flex gap-2 items-start">
-                                  <textarea
-                                    value={editText}
-                                    onChange={(e) => setEditText(e.target.value)}
-                                    className="flex-1 bg-secondary/60 border border-border rounded-lg p-2 text-sm text-white resize-none outline-none focus:border-primary transition-colors"
-                                    rows={2}
-                                    autoFocus
-                                  />
-                                  <div className="flex flex-col gap-1">
-                                    <button onClick={() => handleEditComment(activeCommentId, reply.id)} className="text-primary hover:text-indigo-400 p-1" title="저장">
-                                      <Check size={16} />
-                                    </button>
-                                    <button onClick={() => setEditingComment(null)} className="text-slate-400 hover:text-white p-1" title="취소">
-                                      <X size={16} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <p className="text-sm text-white whitespace-pre-wrap">{reply.content}</p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          ) : (
+                              <p className="text-sm text-white break-all">{c.content}</p>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="p-4 border-t border-border shrink-0 bg-secondary flex flex-col gap-2">
-                {replyingTo && (
-                  <div className="flex items-center justify-between bg-background/50 rounded-lg px-3 py-1 text-xs text-slate-300">
-                    <span><span className="font-bold text-primary">@{replyingTo.authorName}</span> 님에게 답글 남기는 중...</span>
-                    <button onClick={() => setReplyingTo(null)} className="hover:text-white"><X size={14}/></button>
-                  </div>
-                )}
-                <div className="flex gap-2 items-end">
-                  <textarea 
-                    value={commentText} 
-                    onChange={e => setCommentText(e.target.value)}
-                    placeholder="댓글 추가..." 
-                    className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm text-white resize-none h-11 min-h-[44px] max-h-32 focus:outline-none focus:border-primary"
-                  />
-                  <button 
-                    onClick={() => handleAddComment(activeCommentId)}
-                    disabled={!commentText.trim()}
-                    className="w-11 h-11 bg-primary text-white rounded-xl flex items-center justify-center shrink-0 disabled:opacity-50 disabled:bg-slate-700"
-                  >
-                    <Send size={18} />
-                  </button>
+                      );
+                    };
+                    return flattenComments(comments[activeCommentId] || []).map(c => renderComment(c));
+                  })()}
                 </div>
-              </div>
+                <div className="p-4 bg-background border-t border-border shrink-0">
+                  {replyingTo && (
+                    <div className="flex items-center justify-between bg-secondary/50 rounded-lg px-3 py-1.5 text-xs text-slate-300 mb-2">
+                      <span><span className="font-bold text-primary">@{replyingTo.authorName}</span> 님에게 답글 남기는 중...</span>
+                      <button onClick={() => setReplyingTo(null)} className="hover:text-white"><X size={14}/></button>
+                    </div>
+                  )}
+                  <div className="flex items-center bg-secondary rounded-full px-4 py-2 border border-border w-full">
+                    <input 
+                      type="text" 
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder={replyingTo ? "답글 남기기..." : "댓글 남기기..."} 
+                      className="flex-1 bg-transparent text-sm text-white focus:outline-none py-1"
+                    />
+                    <button onClick={() => handleAddComment(activeCommentId)} disabled={!commentText.trim()} className={cn("p-1 transition-colors", commentText.trim() ? "text-primary" : "text-slate-500")} >
+                      <Send size={18} />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
 
         {/* Share Modal */}
         {activeShareId && (
-          <motion.div key="share-modal" 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-50 flex items-end justify-center sm:items-center bg-black/60 backdrop-blur-sm p-4"
+          <div className="fixed inset-0 z-50 flex justify-center pointer-events-none md:pl-64 lg:pl-72">
+            <motion.div key="share-modal-container" 
+              className="relative w-full max-w-xl h-full flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto p-4"
             onClick={() => setActiveShareId(null)}
           >
             <motion.div 
@@ -1051,6 +1022,7 @@ export default function JamPage() {
               </button>
             </motion.div>
           </motion.div>
+        </div>
         )}
 
         {/* DUET Recording Modal */}
@@ -1435,6 +1407,17 @@ export default function JamPage() {
             </motion.div>
           </motion.div>
         )}
+        {/* Report Modal */}
+        {reportTarget && (
+          <ReportModal 
+            isOpen={true} 
+            onClose={() => setReportTarget(null)} 
+            targetName={reportTarget.name}
+            targetType={reportTarget.type}
+            targetId={reportTarget.id}
+          />
+        )}
+
       </AnimatePresence>
     </div>
   );

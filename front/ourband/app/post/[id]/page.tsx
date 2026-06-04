@@ -73,7 +73,7 @@ export default function PostDetailPage() {
   const [isLiked, setIsLiked] = useState<boolean>(false);
   const [commentText, setCommentText] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const [reportModalOpen, setReportModalOpen] = useState<boolean>(false);
+  const [reportTarget, setReportTarget] = useState<{ type: string, id: string | number, name: string } | null>(null);
   const { openUserProfile } = useUserProfile();
   const [poll, setPoll] = useState<PollData | undefined>(undefined);
 
@@ -83,6 +83,7 @@ export default function PostDetailPage() {
   const [editingComment, setEditingComment] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // API Import 추가
   const { getBandPostApi, toggleLikeApi, createBandPostCommentApi, votePollApi, updateCommentApi, deleteCommentApi, updateBandPostApi, deleteBandPostApi } = require('@/api/band/bandService');
@@ -137,7 +138,11 @@ export default function PostDetailPage() {
             }))
           });
         }
-      } catch (e) {
+      } catch (e: any) {
+        if (e.response?.data?.errorCode === 'CONTENT_HIDDEN') {
+          setErrorMsg("관리자에 의해 숨겨진 페이지입니다.");
+          return;
+        }
         console.error("Failed to fetch post, falling back to mock", e);
         const mockPost = MOCK_POSTS[id as keyof typeof MOCK_POSTS] || MOCK_POSTS['1'];
         setPost(mockPost);
@@ -365,14 +370,33 @@ export default function PostDetailPage() {
     }
   };
 
+  // 댓글 평탄화 함수 (재귀를 풀어서 UI가 화면 밖으로 나가는 것을 방지)
+  const flattenComments = (commentsList: any[], depth = 0): any[] => {
+    return commentsList.reduce((acc, c) => {
+      acc.push({ ...c, depth });
+      if (c.replies && c.replies.length > 0) {
+        acc.push(...flattenComments(c.replies, depth + 1));
+      }
+      return acc;
+    }, []);
+  };
+
   // 댓글 렌더링 함수 (React 컴포넌트가 아닌 일반 함수로 분리하여 한글 입력 끊김 방지)
-  const renderComment = (c: any, depth = 0) => {
+  const renderComment = (c: any) => {
     const isEditing = editingComment === c.id;
     const isReplying = replyingTo === c.id;
-    const isAuthor = currentUserId === c.authorId;
+    const isAuthor = currentUserId === c.userId;
+
+    // 깊이에 따른 들여쓰기 계산 (3단위로 순환하여 화면 밖으로 나가지 않게 함)
+    const effectiveDepth = c.depth === 0 ? 0 : ((c.depth - 1) % 4) + 1;
+    const isRoot = c.depth === 0;
 
     return (
-      <div key={c.id} className={cn("flex gap-3", depth > 0 && "ml-8 pl-4 border-l-2 border-border/40")}>
+      <div 
+        key={c.id} 
+        style={{ marginLeft: effectiveDepth > 0 ? `${effectiveDepth * 2.5}rem` : '0' }}
+        className={cn("flex gap-3 relative", isRoot ? "mt-8" : "mt-4", effectiveDepth > 0 && "pl-4 border-l-2 border-border/40")}
+      >
         <div
           className="w-8 h-8 rounded-full bg-slate-800 border border-border shrink-0 cursor-pointer hover:border-primary transition-colors overflow-hidden mt-0.5"
           onClick={() => openUserProfile(Number(c.authorId), c.authorName, c.authorProfileImageUrl)}
@@ -392,18 +416,25 @@ export default function PostDetailPage() {
             >
               <span className="text-sm font-bold text-white group-hover:text-primary transition-colors">{c.authorName}</span>
               <span className="text-[10px] text-slate-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
-              {c.updatedAt && c.createdAt && c.updatedAt !== c.createdAt && (
+              {c.updatedAt && c.createdAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000 && (
                 <span className="text-[10px] text-slate-500 italic">(수정됨)</span>
               )}
             </div>
             <div className="flex items-center gap-0.5">
-              {depth === 0 && (
+              <button
+                onClick={() => { setReplyingTo(isReplying ? null : c.id); setReplyText(""); setEditingComment(null); }}
+                className="text-slate-500 hover:text-primary transition-colors p-1.5 rounded-md hover:bg-white/5"
+                title="답글"
+              >
+                <Reply size={13} />
+              </button>
+              {!isAuthor && (
                 <button
-                  onClick={() => { setReplyingTo(isReplying ? null : c.id); setReplyText(""); setEditingComment(null); }}
-                  className="text-slate-500 hover:text-primary transition-colors p-1.5 rounded-md hover:bg-white/5"
-                  title="답글"
+                  onClick={() => setReportTarget({ type: 'BAND_COMMENT', id: c.id, name: '댓글' })}
+                  className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5"
+                  title="신고"
                 >
-                  <Reply size={13} />
+                  <AlertCircle size={13} />
                 </button>
               )}
               {isAuthor && (
@@ -415,13 +446,15 @@ export default function PostDetailPage() {
                   >
                     <Edit3 size={13} />
                   </button>
-                  <button
-                    onClick={() => handleDeleteComment(c.id)}
-                    className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5"
-                    title="삭제"
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  {(!c.replies || c.replies.length === 0) && (
+                    <button
+                      onClick={() => handleDeleteComment(c.id)}
+                      className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5"
+                      title="삭제"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -471,13 +504,6 @@ export default function PostDetailPage() {
               </div>
             </div>
           )}
-
-          {/* 대댓글 목록 */}
-          {c.replies && c.replies.length > 0 && (
-            <div className="mt-4 space-y-4">
-              {c.replies.map((reply: any) => renderComment(reply, depth + 1))}
-            </div>
-          )}
         </div>
       </div>
     );
@@ -485,6 +511,14 @@ export default function PostDetailPage() {
 
   if (loading) {
     return <div className="min-h-screen bg-background text-white flex items-center justify-center font-bold text-xl">로딩 중...</div>;
+  }
+
+  if (errorMsg) {
+    return <div className="min-h-screen bg-background text-white flex flex-col items-center justify-center">
+      <AlertCircle size={48} className="text-rose-500 mb-4" />
+      <h1 className="text-2xl font-bold text-white mb-2">{errorMsg}</h1>
+      <button onClick={() => router.back()} className="mt-6 px-6 py-2 bg-primary text-white rounded-lg hover:bg-indigo-600 transition-colors">이전 화면으로 돌아가기</button>
+    </div>;
   }
 
   if (!post) {
@@ -506,7 +540,7 @@ export default function PostDetailPage() {
         <div className="flex items-center gap-2">
           <button className="text-slate-400 hover:text-white transition-colors p-2 rounded-full hover:bg-white/10"><Share2 size={20}/></button>
           {currentUserId !== Number(post.authorId) && (
-            <button onClick={() => setReportModalOpen(true)} className="text-slate-400 hover:text-rose-500 transition-colors p-2 rounded-full hover:bg-white/10"><AlertCircle size={20}/></button>
+            <button onClick={() => setReportTarget({ type: 'BAND_POST', id: post.id, name: '게시물' })} className="text-slate-400 hover:text-rose-500 transition-colors p-2 rounded-full hover:bg-white/10"><AlertCircle size={20}/></button>
           )}
         </div>
       </header>
@@ -537,15 +571,15 @@ export default function PostDetailPage() {
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setIsEditModalOpen(true)}
-                className="text-slate-400 hover:text-primary transition-colors flex items-center gap-1.5 text-sm font-bold bg-secondary border border-border px-3 py-1.5 rounded-lg"
+                className="text-slate-500 hover:text-primary transition-colors p-2 rounded-md hover:bg-white/5" title="수정"
               >
-                <Edit3 size={16} /> 수정
+                <Edit3 size={16} />
               </button>
               <button 
                 onClick={handleDeletePost}
-                className="text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1.5 text-sm font-bold bg-secondary border border-border px-3 py-1.5 rounded-lg"
+                className="text-slate-500 hover:text-primary transition-colors p-2 rounded-md hover:bg-white/5" title="삭제"
               >
-                <Trash2 size={16} /> 삭제
+                <Trash2 size={16} />
               </button>
             </div>
           )}
@@ -635,9 +669,9 @@ export default function PostDetailPage() {
           <h2 className="text-lg font-bold text-white">댓글 <span className="text-primary">{post.comments}</span></h2>
         </div>
 
-          <div className="space-y-6">
-            {post.commentsList && post.commentsList.length > 0 ? (
-              post.commentsList.map((c: any) => renderComment(c, 0))
+            <div className="pb-8 mt-6">
+              {post.commentsList && post.commentsList.length > 0 ? (
+                flattenComments(post.commentsList).map((c: any) => renderComment(c))
             ) : (
             <div className="text-center py-8 text-slate-500 text-sm">
               등록된 댓글이 없습니다. 가장 먼저 댓글을 남겨보세요!
@@ -672,7 +706,15 @@ export default function PostDetailPage() {
 
       </main>
       
-      <ReportModal isOpen={reportModalOpen} onClose={() => setReportModalOpen(false)} targetName="게시글" />
+      {reportTarget && (
+        <ReportModal 
+          isOpen={true} 
+          onClose={() => setReportTarget(null)} 
+          targetName={reportTarget.name}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+        />
+      )}
       
 
       <WritePostModal 

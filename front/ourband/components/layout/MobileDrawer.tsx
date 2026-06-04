@@ -37,7 +37,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
       getUserInfoApi()
         .then((data) => {
           setUser(data);
-          setIsAdmin(data.type === 'admin');
+          setIsAdmin(data.type === 'system_admin' || data.type === 'service_admin' || data.type === 'admin');
         })
         .catch((err) => {
           console.error("Failed to load user info in drawer", err);
@@ -210,6 +210,11 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               </div>
             </div>
           )}
+          <div className="mt-6 flex justify-center gap-4 text-[10px] text-slate-500 font-medium">
+            <Link href="/terms" onClick={onClose} className="hover:text-slate-300 transition-colors">이용약관</Link>
+            <span>|</span>
+            <Link href="/privacy" onClick={onClose} className="hover:text-slate-300 transition-colors">개인정보처리방침</Link>
+          </div>
         </div>
       </div>
     </div>

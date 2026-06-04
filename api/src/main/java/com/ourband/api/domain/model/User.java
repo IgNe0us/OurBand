@@ -40,4 +40,10 @@ public class User extends BaseEntity {
 
     @Column(columnDefinition = "BOOLEAN DEFAULT TRUE")
     private Boolean isActive;
+
+    @Column(name = "suspended_until")
+    private java.time.LocalDateTime suspendedUntil;
+
+    @Column(name = "suspend_reason", length = 500)
+    private String suspendReason;
 }

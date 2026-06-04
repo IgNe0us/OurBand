@@ -110,11 +110,11 @@ export default function StudioPage() {
   };
 
   const fetchExternalStudios = () => {
-    if (!isKakaoAvailable || !window.kakao || !window.kakao.maps || !window.kakao.maps.services) return;
+    if (!isKakaoAvailable || !(window as any).kakao || !(window as any).kakao.maps || !(window as any).kakao.maps.services) return;
     
-    const ps = new window.kakao.maps.services.Places();
+    const ps = new (window as any).kakao.maps.services.Places();
     ps.keywordSearch("합주실", (data: any, status: any) => {
-      if (status === window.kakao.maps.services.Status.OK) {
+      if (status === (window as any).kakao.maps.services.Status.OK) {
         const results: ExtendedStudioData[] = data.map((el: any) => {
           const lat = Number(el.y) || 0;
           const lng = Number(el.x) || 0;
@@ -139,9 +139,9 @@ export default function StudioPage() {
         setExternalStudios(results);
       }
     }, {
-      location: new window.kakao.maps.LatLng(myLocation[0], myLocation[1]),
+      location: new (window as any).kakao.maps.LatLng(myLocation[0], myLocation[1]),
       radius: 10000,
-      sort: window.kakao.maps.services.SortBy.DISTANCE
+      sort: (window as any).kakao.maps.services.SortBy.DISTANCE
     });
   };
 
@@ -399,7 +399,7 @@ export default function StudioPage() {
               </div>
               
               <div className="h-[350px] w-full relative z-0">
-                {!loading && isKakaoAvailable && window.kakao && window.kakao.maps ? (
+                {!loading && isKakaoAvailable && (window as any).kakao && (window as any).kakao.maps ? (
                   <Map
                     center={{ 
                       lat: (myLocation[0] + (selectedExternal?.lat || 0)) / 2, 

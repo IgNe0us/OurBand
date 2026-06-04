@@ -75,6 +75,11 @@ public class UserService {
             throw new IllegalArgumentException("이미 사용 중인 이메일입니다: " + requestDTO.getEmail());
         }
 
+        // 1-1. 닉네임 중복 검사
+        if (userRepository.findByNickname(requestDTO.getNickname()).isPresent()) {
+            throw new IllegalArgumentException("이미 사용 중인 닉네임입니다.");
+        }
+
         // 2. 비밀번호 암호화
         String hashedPassword = passwordEncoder.encode(requestDTO.getPassword());
 
@@ -109,6 +114,21 @@ public class UserService {
         return userRepository.findByEmail(email);
     }
 
+    public Optional<User> findUserByNickname(String nickname) {
+        return userRepository.findByNickname(nickname);
+    }
+
+    @Transactional
+    public void updatePassword(String email, String rawNewPassword) {
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new IllegalArgumentException("가입되지 않은 이메일입니다."));
+        
+        // Setter가 있는지 확인 후 사용. 만약 User 엔티티에 Setter가 없다면 builder() 등을 사용하거나 update 쿼리 사용
+        // 여기서는 @Setter가 있다고 가정하고 진행합니다. (UserRequestDTO에 @Setter가 있으니 User에도 보통 있음)
+        user.setPassword(passwordEncoder.encode(rawNewPassword));
+        userRepository.save(user);
+    }
+
     // 💡 부사수가 빼먹은 필수 기능: ID로 유저 찾기!
     public Optional<User> findUserById(Long id) {
         return userRepository.findById(id);
@@ -132,11 +152,30 @@ public class UserService {
     // 로그인
     public User login(String email, String password) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 이메일입니다."));
+                .orElseThrow(() -> new IllegalArgumentException("아이디 또는 비밀번호가 일치하지 않습니다."));
                 
         // 💡 equals 대신 matches를 써야 암호화된 비번이랑 비교가 됨!
         if (!passwordEncoder.matches(password, user.getPassword())) { 
-            throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
+            throw new IllegalArgumentException("아이디 또는 비밀번호가 일치하지 않습니다.");
+        }
+
+        if (Boolean.FALSE.equals(user.getIsActive())) {
+            if (user.getSuspendedUntil() != null && user.getSuspendedUntil().isBefore(java.time.LocalDateTime.now())) {
+                user.setIsActive(true);
+                user.setSuspendedUntil(null);
+                user.setSuspendReason(null);
+                userRepository.save(user); // 자동 정지 해제
+            } else {
+                if (user.getSuspendedUntil() != null) {
+                    long days = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDateTime.now(), user.getSuspendedUntil());
+                    String reason = user.getSuspendReason() != null ? user.getSuspendReason() : "관리자 직권 정지";
+                    if (days > 36500) { 
+                        throw new IllegalArgumentException(String.format("영구 정지된 계정입니다.\n사유: %s", reason));
+                    }
+                    throw new IllegalArgumentException(String.format("정지된 계정입니다.\n사유: %s\n남은기간: %d일", reason, Math.max(1, days)));
+                }
+                throw new IllegalArgumentException("정지된 계정입니다.\n관리자에게 문의하세요.");
+            }
         }
         
         return user;
@@ -182,7 +221,7 @@ public class UserService {
                 .toList();
 
         // [히스토리 목록] Entity -> DTO 변환
-        List<HistoryResponse> histories = userHistoryRepository.findByUserIdOrderByCreatedAtDesc(targetUserId).stream()
+        List<HistoryResponse> histories = userHistoryRepository.findByUserIdAndIsHiddenFalseOrderByCreatedAtDesc(targetUserId).stream()
                 .map(h -> {
                     // 💡 getUrl(), getType() 대신 변경된 getMediaUrl(), getMediaType()을 사용합니다.
                     String firstMediaUrl = h.getMediaList().isEmpty() ? null : h.getMediaList().get(0).getMediaUrl();
@@ -193,10 +232,10 @@ public class UserService {
 
                     return new HistoryResponse(
                             h.getId(), 
-                            h.getTitle(), 
-                            h.getContent(), 
-                            firstMediaUrl, 
-                            firstMediaType,
+                            h.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (h.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : h.getTitle()), 
+                            h.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (h.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : h.getContent()), 
+                            (h.isDeleted() || h.isHidden()) ? null : firstMediaUrl, 
+                            (h.isDeleted() || h.isHidden()) ? null : firstMediaType,
                             likeViewCacheService.getCachedViewCount("history", h.getId(), h.getViewCount()),
                             likeViewCacheService.getCachedLikeCount("history", h.getId(), h.getLikeCount()),
                             h.getCommentCount(),
@@ -496,17 +535,28 @@ public class UserService {
     // 3. 특정 히스토리의 댓글 목록 조회
     @Transactional(readOnly = true)
     public List<HistoryCommentResponse> getComments(Long historyId) {
-        List<HistoryComment> topLevelComments = historyCommentRepository.findByHistoryIdAndParentIdIsNullOrderByCreatedAtAsc(historyId);
+        List<HistoryComment> allComments = historyCommentRepository.findByHistoryIdOrderByCreatedAtAsc(historyId);
+        java.util.Map<Long, HistoryCommentResponse> dtoMap = allComments.stream()
+                .collect(java.util.stream.Collectors.toMap(HistoryComment::getId, this::mapCommentToDTO));
         
-        return topLevelComments.stream().map(c -> {
-            HistoryCommentResponse dto = mapCommentToDTO(c);
-            List<HistoryComment> replies = historyCommentRepository.findByParentIdOrderByCreatedAtAsc(c.getId());
-            List<HistoryCommentResponse> replyDTOs = replies.stream().map(this::mapCommentToDTO).toList();
-            return new HistoryCommentResponse(
-                dto.id(), dto.userId(), dto.author(), dto.profilePictureUrl(),
-                dto.content(), dto.createdAt(), dto.parentId(), replyDTOs
-            );
-        }).toList();
+        List<HistoryCommentResponse> rootComments = new java.util.ArrayList<>();
+        for (HistoryComment c : allComments) {
+            HistoryCommentResponse dto = dtoMap.get(c.getId());
+            if (dto.replies() == null) {
+                // Java 14 record requires a new instance or mutable list, mapCommentToDTO sets an ArrayList
+            }
+            if (c.getParentId() == null) {
+                rootComments.add(dto);
+            } else {
+                HistoryCommentResponse parentDto = dtoMap.get(c.getParentId());
+                if (parentDto != null) {
+                    if (parentDto.replies() != null) {
+                        parentDto.replies().add(dto);
+                    }
+                }
+            }
+        }
+        return rootComments;
     }
 
     private HistoryCommentResponse mapCommentToDTO(HistoryComment c) {
@@ -516,7 +566,7 @@ public class UserService {
         String profilePic = profileRepository.findByUser_UserId(c.getUserId())
                 .map(Profile::getProfilePictureUrl)
                 .orElse(null);
-        return new HistoryCommentResponse(c.getId(), c.getUserId(), nickname, profilePic, c.getContent(), c.getCreatedAt(), c.getParentId(), new java.util.ArrayList<>());
+        return new HistoryCommentResponse(c.getId(), c.getUserId(), nickname, profilePic, c.isDeleted() ? "관리자에 의해 삭제 처리된 댓글입니다." : (c.isHidden() ? "관리자에 의해 숨김 처리 된 댓글입니다." : c.getContent()), c.getCreatedAt(), c.getParentId(), new java.util.ArrayList<>());
     }
 
     @Transactional

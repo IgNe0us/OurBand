@@ -55,6 +55,12 @@ public class CommunityPost {
     @Builder.Default
     private Integer viewCount = 0;
 
+    @Column(name = "is_hidden", nullable = false)
+    private boolean isHidden = false;
+
+    @Column(name = "is_deleted", nullable = false)
+    private boolean isDeleted = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

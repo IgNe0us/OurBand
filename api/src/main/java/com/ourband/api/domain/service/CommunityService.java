@@ -48,6 +48,10 @@ public class CommunityService {
         CommunityPost post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("게시글을 찾을 수 없습니다."));
         
+        if (post.isHidden() || post.isDeleted()) {
+            throw new com.ourband.api.global.exception.ContentHiddenException("관리자에 의해 숨겨진 페이지입니다.");
+        }
+
         // 조회수 증가 (Redis Write-Behind)
         likeViewCacheService.incrementViewCount("community", postId, currentUserId);
         
@@ -272,17 +276,6 @@ public class CommunityService {
                 .build());
     }
 
-    @Transactional
-    public void createReport(Long currentUserId, ReportCreateRequestDTO request) {
-        Report report = Report.builder()
-                .reporterId(currentUserId)
-                .targetType(request.getTargetType())
-                .targetId(request.getTargetId())
-                .reason(request.getReason())
-                .build();
-        reportRepository.save(report);
-    }
-
     private void checkPermission(Long resourceOwnerId, Long currentUserId) {
         if (resourceOwnerId.equals(currentUserId)) {
             return;
@@ -311,21 +304,19 @@ public class CommunityService {
 
         // Comments
         List<CommunityPostComment> comments = commentRepository.findByPostId(post.getId());
+        java.util.Map<Long, CommunityPostCommentResponseDTO> commentDtoMap = comments.stream()
+                .collect(Collectors.toMap(CommunityPostComment::getId, this::mapToCommentResponseDTO));
+        
         List<CommunityPostCommentResponseDTO> commentDTOs = new ArrayList<>();
         for (CommunityPostComment c : comments) {
+            CommunityPostCommentResponseDTO dto = commentDtoMap.get(c.getId());
             if (c.getParentId() == null) {
-                CommunityPostCommentResponseDTO cDTO = mapToCommentResponseDTO(c);
-                cDTO = CommunityPostCommentResponseDTO.builder()
-                        .id(cDTO.getId()).postId(cDTO.getPostId()).userId(cDTO.getUserId())
-                        .authorName(cDTO.getAuthorName()).authorProfileImageUrl(cDTO.getAuthorProfileImageUrl())
-                        .content(cDTO.getContent()).createdAt(cDTO.getCreatedAt()).updatedAt(cDTO.getUpdatedAt())
-                        .parentId(null)
-                        .replies(comments.stream()
-                                .filter(reply -> c.getId().equals(reply.getParentId()))
-                                .map(this::mapToCommentResponseDTO)
-                                .collect(Collectors.toList()))
-                        .build();
-                commentDTOs.add(cDTO);
+                commentDTOs.add(dto);
+            } else {
+                CommunityPostCommentResponseDTO parentDto = commentDtoMap.get(c.getParentId());
+                if (parentDto != null) {
+                    parentDto.getReplies().add(dto);
+                }
             }
         }
 
@@ -372,10 +363,10 @@ public class CommunityService {
                 .boardType(post.getBoardType())
                 .category(post.getCategory())
                 .part(post.getPart())
-                .title(post.getTitle())
-                .content(post.getContent())
-                .mediaUrl(post.getMediaUrl())
-                .mediaType(post.getMediaType())
+                .title(post.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (post.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : post.getTitle()))
+                .content(post.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (post.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : post.getContent()))
+                .mediaUrl((post.isDeleted() || post.isHidden()) ? null : post.getMediaUrl())
+                .mediaType((post.isDeleted() || post.isHidden()) ? null : post.getMediaType())
                 .likeCount(likeViewCacheService.getCachedLikeCount("community", post.getId(), post.getLikeCount()))
                 .commentCount(post.getCommentCount())
                 .viewCount(likeViewCacheService.getCachedViewCount("community", post.getId(), post.getViewCount()))
@@ -404,7 +395,7 @@ public class CommunityService {
                 .userId(comment.getUserId())
                 .authorName(authorName)
                 .authorProfileImageUrl(authorProfileImageUrl)
-                .content(comment.getContent())
+                .content(comment.isDeleted() ? "관리자에 의해 삭제 처리된 댓글입니다." : (comment.isHidden() ? "관리자에 의해 숨김 처리 된 댓글입니다." : comment.getContent()))
                 .createdAt(comment.getCreatedAt())
                 .updatedAt(comment.getUpdatedAt())
                 .parentId(comment.getParentId())

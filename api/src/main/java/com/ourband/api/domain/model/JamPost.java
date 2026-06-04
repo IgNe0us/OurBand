@@ -70,6 +70,14 @@ public class JamPost {
     @Builder.Default
     private Double myVolume = 1.0;
 
+    @Column(name = "is_hidden", nullable = false)
+    @Builder.Default
+    private boolean isHidden = false;
+
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private boolean isDeleted = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

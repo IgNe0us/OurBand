@@ -14,6 +14,8 @@ import { GlobalNotificationListener } from "@/components/notification/GlobalNoti
 import { Toaster } from "react-hot-toast";
 import { ConfirmProvider } from "@/hooks/useConfirm";
 import { UserProfileProvider } from "@/store/userProfileContext";
+import { getPublicSettingsApi } from "@/api/settings/settingsService";
+import { AlertCircle } from "lucide-react";
 
 export type LayoutContextType = {
   openMenu: () => void;
@@ -33,6 +35,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [publicSettings, setPublicSettings] = useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    getPublicSettingsApi().then(setPublicSettings).catch(console.error);
+  }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -46,15 +53,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isAdminPage = pathname?.startsWith('/admin');
   const isLoginPage = pathname?.startsWith('/login');
   const isRegistPage = pathname?.startsWith('/register');
+  const isFindAccountPage = pathname?.startsWith('/find-account');
+  const isMaintenancePage = pathname?.startsWith('/maintenance');
 
-  const isHideSidebar = isAdminPage || isLoginPage || isRegistPage;
+  const isHideSidebar = isAdminPage || isLoginPage || isRegistPage || isFindAccountPage || isMaintenancePage;
+  const isHideListeners = isLoginPage || isRegistPage || isFindAccountPage || isMaintenancePage;
+
+  const topNotice = publicSettings['global_notice'];
 
   return (
     <UserProfileProvider>
       <ConfirmProvider>
         <LayoutContext.Provider value={{ openMenu: () => setIsMenuOpen(true) }}>
-          <GlobalChatListener />
-          <GlobalNotificationListener />
+          {!isHideListeners && <GlobalChatListener />}
+          {!isHideListeners && <GlobalNotificationListener />}
           <Toaster 
             position="top-center" 
             toastOptions={{ 
@@ -92,6 +104,31 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {/* Removed Global Fixed Notification Bell */}
 
             <div className={`flex-1 flex flex-col min-h-screen w-full focus:outline-none ${!isHideSidebar ? 'md:pl-64 lg:pl-72' : ''}`}>
+              {!isHideSidebar && topNotice && (
+                <div className="bg-primary/20 border-b border-primary/30 py-2.5 px-4 md:px-8 flex items-center justify-center gap-2 text-primary font-bold text-sm z-50">
+                  <AlertCircle size={16} />
+                  <span>{topNotice}</span>
+                </div>
+              )}
+              
+              {!isHideSidebar && publicSettings['home_banner_url'] && (
+                <div className="w-full bg-background border-b border-border/50">
+                  <a 
+                    href={publicSettings['home_banner_link'] || "#"} 
+                    target={publicSettings['home_banner_link'] ? "_blank" : "_self"} 
+                    rel="noreferrer" 
+                    className="block w-full max-h-[160px] md:max-h-[200px] overflow-hidden group relative"
+                  >
+                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/10 transition-colors z-10"></div>
+                    <img 
+                      src={publicSettings['home_banner_url']} 
+                      alt="Global Banner" 
+                      className="w-full h-[100px] object-cover object-center group-hover:scale-105 transition-transform duration-700" 
+                      referrerPolicy="no-referrer"
+                    />
+                  </a>
+                </div>
+              )}
               <main className={`flex-1 w-full mx-auto overflow-x-hidden ${!isHideSidebar ? 'max-w-screen-2xl pb-16 md:pb-8' : ''}`}>
                 {children}
               </main>

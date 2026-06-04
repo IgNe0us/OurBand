@@ -10,7 +10,7 @@ import toast from "react-hot-toast";
 
 import { getUserInfoApi } from "@/api/account/userService";
 import { getSeekingPostsApi, MemberSeekingPostData, sendOfferApi } from "@/api/recruitment/recruitmentService";
-import { getAllBandsApi, BandListData, getMyBandsApi, BandProfileData, getBandProfileApi } from "@/api/band/bandService";
+import { getAllBandsApi, BandListData, getMyBandsApi, BandProfileData, getBandProfileApi, MyBandData } from "@/api/band/bandService";
 import { BandPreviewModal } from "@/components/band/BandPreviewModal";
 
 const SwipeVideoPlayer = ({ src }: { src: string }) => {

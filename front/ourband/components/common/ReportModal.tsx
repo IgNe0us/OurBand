@@ -1,13 +1,15 @@
 "use client";
-// @ts-nocheck
 import React, { useState } from "react";
 import { X, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { createReportApi } from "@/api/report/reportService";
 
-interface ReportModalProps {
+export interface ReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   targetName?: string;
+  targetType: string;
+  targetId: number | string;
 }
 
 const REPORT_REASONS = [
@@ -20,20 +22,35 @@ const REPORT_REASONS = [
   "기타 (상세 내용 직접 작성)"
 ];
 
-export function ReportModal({ isOpen, onClose, targetName = "게시글" }: ReportModalProps) {
+export function ReportModal({ isOpen, onClose, targetName = "게시물", targetType, targetId }: ReportModalProps) {
   const [selectedReason, setSelectedReason] = useState("");
   const [detail, setDetail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedReason) {
       alert("신고 사유를 선택해주세요.");
       return;
     }
-    alert("신고가 정상적으로 접수되었습니다. 관리자 검토 후 신속하게 조치됩니다.");
-    setSelectedReason("");
-    setDetail("");
-    onClose();
+
+    try {
+      setIsSubmitting(true);
+      const finalReason = selectedReason.includes("기타") 
+        ? `[기타] ${detail}` 
+        : selectedReason;
+
+      await createReportApi(targetType, targetId, finalReason);
+      
+      alert("신고가 정상적으로 접수되었습니다. 관리자 검토 후 신속하게 조치됩니다.");
+      setSelectedReason("");
+      setDetail("");
+      onClose();
+    } catch (error: any) {
+      alert(error.response?.data?.message || "신고 접수 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -51,7 +68,7 @@ export function ReportModal({ isOpen, onClose, targetName = "게시글" }: Repor
                 <AlertCircle size={22} className="text-rose-500" />
                 {targetName} 신고하기
               </h3>
-              <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+              <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors" disabled={isSubmitting}>
                 <X size={24} />
               </button>
             </div>
@@ -69,6 +86,7 @@ export function ReportModal({ isOpen, onClose, targetName = "게시글" }: Repor
                         checked={selectedReason === reason}
                         onChange={(e) => setSelectedReason(e.target.value)}
                         className="w-4 h-4 accent-rose-500"
+                        disabled={isSubmitting}
                       />
                       <span className="text-sm font-medium text-slate-200">{reason}</span>
                     </label>
@@ -88,6 +106,8 @@ export function ReportModal({ isOpen, onClose, targetName = "게시글" }: Repor
                      placeholder="상세 신고 사유를 구체적으로 작성해주세요 (최대 200자)" 
                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-rose-500 resize-none"
                      required
+                     maxLength={200}
+                     disabled={isSubmitting}
                    />
                  </motion.div>
               )}
@@ -96,15 +116,17 @@ export function ReportModal({ isOpen, onClose, targetName = "게시글" }: Repor
                 <button 
                   type="button" 
                   onClick={onClose}
-                  className="flex-1 py-4 rounded-xl font-bold bg-background border border-border text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                  disabled={isSubmitting}
+                  className="flex-1 py-4 rounded-xl font-bold bg-background border border-border text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
                 >
                   취소
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 py-4 rounded-xl font-black bg-rose-500 hover:bg-rose-600 text-white shadow-[0_0_20px_rgba(244,63,94,0.3)] transition-colors"
+                  disabled={isSubmitting}
+                  className="flex-1 py-4 rounded-xl font-black bg-rose-500 hover:bg-rose-600 text-white shadow-[0_0_20px_rgba(244,63,94,0.3)] transition-colors disabled:opacity-50"
                 >
-                  신고 접수
+                  {isSubmitting ? "접수 중..." : "신고 접수"}
                 </button>
               </div>
             </form>

@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface CommunityPostRepository extends JpaRepository<CommunityPost, Long> {
 
-    @Query("SELECT p FROM CommunityPost p WHERE p.boardType = :boardType " +
+    @Query("SELECT p FROM CommunityPost p WHERE p.boardType = :boardType AND p.isHidden = false " +
            "AND (:category IS NULL OR :category = '전체' OR p.category = :category) " +
            "AND (:part IS NULL OR :part = '전체' OR p.part = :part) " +
            "AND (:keyword IS NULL OR :keyword = '' OR p.title LIKE CONCAT('%', :keyword, '%') OR p.content LIKE CONCAT('%', :keyword, '%')) " +

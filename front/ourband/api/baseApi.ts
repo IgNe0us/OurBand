@@ -17,6 +17,19 @@ export const apiClient: AxiosInstance = axios.create({
 let isRefreshing = false;
 let failedQueue: any[] = [];
 
+const getIsRedirectingToMaintenance = () => {
+    if (typeof window !== 'undefined') {
+        return (window as any).isRedirectingToMaintenance === true;
+    }
+    return false;
+};
+
+const setIsRedirectingToMaintenance = (val: boolean) => {
+    if (typeof window !== 'undefined') {
+        (window as any).isRedirectingToMaintenance = val;
+    }
+};
+
 const processQueue = (error: any, token: string | null = null) => {
     failedQueue.forEach(prom => {
         if (error) {
@@ -31,7 +44,26 @@ const processQueue = (error: any, token: string | null = null) => {
 apiClient.interceptors.response.use(
     (response) => response,
     async (error) => {
+        if (getIsRedirectingToMaintenance()) {
+            return Promise.reject(error);
+        }
+
         const originalRequest = error.config;
+
+        // 점검 모드 에러 처리 (503 MAINTENANCE)
+        if (error.response?.status === 503 && error.response?.data?.errorCode === 'MAINTENANCE') {
+            setIsRedirectingToMaintenance(true);
+            if (typeof window !== 'undefined') {
+                const path = window.location.pathname;
+                if (path !== '/maintenance' && !path.startsWith('/login') && !path.startsWith('/admin')) {
+                    axios.post(`${BASE_URL}/users/logout`, {}, { withCredentials: true })
+                        .finally(() => {
+                            window.location.href = '/maintenance';
+                        });
+                }
+            }
+            return Promise.reject(error);
+        }
 
         if (error.response?.status === 401 && !originalRequest._retry) {
             // 방어 코드: 무한 루프 방지 및 refresh 엔드포인트 자체 401 무시
@@ -66,7 +98,12 @@ apiClient.interceptors.response.use(
                 processQueue(err, null);
                 // 리프레시 토큰마저 만료된 경우 (로그아웃 처리)
                 if (typeof window !== 'undefined') {
-                    window.location.href = '/login';
+                    const path = window.location.pathname;
+                    const isPublicPage = path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/find-account');
+                    
+                    if (!getIsRedirectingToMaintenance() && path !== '/maintenance' && !isPublicPage) {
+                        window.location.href = '/login';
+                    }
                 }
                 return Promise.reject(err);
             }

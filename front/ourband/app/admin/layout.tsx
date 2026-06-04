@@ -22,12 +22,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [userType, setUserType] = useState<string | null>(null);
 
   useEffect(() => {
     getUserInfoApi()
       .then((data) => {
-        const adminStatus = data.type === 'admin';
+        const adminStatus = data.type === 'system_admin' || data.type === 'service_admin' || data.type === 'admin';
         setIsAdmin(adminStatus);
+        setUserType(data.type);
         if (!adminStatus) {
           toast.error("관리자 권한이 필요합니다.");
           router.push("/");
@@ -59,6 +61,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <nav className="p-4 space-y-1 hidden md:block">
           <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 px-3">Management</div>
           {TABS.map(tab => {
+            // 서비스 관리자는 설정 페이지 볼 수 없음
+            if (tab.id === 'settings' && userType === 'service_admin') return null;
+            
             const Icon = tab.icon;
             const isActive = pathname === tab.path;
             return (
@@ -77,6 +82,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Mobile Horizontal Tabs */}
         <div className="md:hidden flex overflow-x-auto hide-scrollbar p-2 gap-2 border-b border-border bg-background">
           {TABS.map(tab => {
+            if (tab.id === 'settings' && userType === 'service_admin') return null;
             const isActive = pathname === tab.path;
             return (
               <Link

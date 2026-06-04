@@ -56,8 +56,8 @@ export default function BandIdDynamicBoardPage() {
   
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [postToEdit, setPostToEdit] = useState<BandPostData | null>(null);
-  const [reportModalOpen, setReportModalOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ type: string, id: string | number, name: string } | null>(null);
   const [selectedVideoPostId, setSelectedVideoPostId] = useState<string | number | null>(null);
   const [rejectModalTarget, setRejectModalTarget] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -647,7 +647,7 @@ export default function BandIdDynamicBoardPage() {
                             </button>
                           ) : (
                             <button 
-                              onClick={(e) => { e.stopPropagation(); setReportModalOpen(true); }}
+                              onClick={(e) => { e.stopPropagation(); setReportTarget({ type: 'BAND_POST', id: post.id!, name: '게시물' }); }}
                               className="text-slate-600 hover:text-rose-500 transition-colors p-1"
                               title="신고하기"
                             >
@@ -742,7 +742,7 @@ export default function BandIdDynamicBoardPage() {
                             </button>
                           ) : (
                             <button 
-                              onClick={(e) => { e.stopPropagation(); setReportModalOpen(true); }}
+                              onClick={(e) => { e.stopPropagation(); setReportTarget({ type: 'BAND_POST', id: post.id!, name: '게시물' }); }}
                               className="text-slate-600 hover:text-rose-500 transition-colors p-1"
                               title="신고하기"
                             >
@@ -837,7 +837,7 @@ export default function BandIdDynamicBoardPage() {
                             </button>
                           ) : (
                             <button 
-                              onClick={(e) => { e.stopPropagation(); setReportModalOpen(true); }}
+                              onClick={(e) => { e.stopPropagation(); setReportTarget({ type: 'BAND_POST', id: post.id!, name: '게시물' }); }}
                               className="text-slate-600 hover:text-rose-500 transition-colors p-1"
                               title="신고하기"
                             >
@@ -912,11 +912,15 @@ export default function BandIdDynamicBoardPage() {
         onSubmit={handleCreatePost}
       />
 
-      <ReportModal 
-        isOpen={reportModalOpen} 
-        onClose={() => setReportModalOpen(false)} 
-        targetName="게시글"
-      />
+      {reportTarget && (
+        <ReportModal 
+          isOpen={true} 
+          onClose={() => setReportTarget(null)} 
+          targetName={reportTarget.name}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+        />
+      )}
 
       <VideoPostModal
         isOpen={!!selectedVideoPostId}

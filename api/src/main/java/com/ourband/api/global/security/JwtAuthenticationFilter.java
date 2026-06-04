@@ -57,17 +57,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 System.out.println("[JwtAuthFilter] Token is valid. UserId: " + userId + ", User found: " + (user != null));
 
                 if (user != null) {
+                    if (Boolean.FALSE.equals(user.getIsActive())) {
+                        System.out.println("[JwtAuthFilter] User is banned! Denying access.");
+                    } else {
+                        // 권한 매핑 로직
+                    String role = "ROLE_USER";
+                    if ("system_admin".equals(user.getType()) || "admin".equals(user.getType())) {
+                        role = "ROLE_SYSTEM_ADMIN";
+                    } else if ("service_admin".equals(user.getType())) {
+                        role = "ROLE_SERVICE_ADMIN";
+                    }
+
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(
                                     user,
                                     null,
-                                    List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                                    List.of(new SimpleGrantedAuthority(role))
                             );
 
-                    // 💡 여기가 핵심
-                    SecurityContextHolder.getContext()
-                            .setAuthentication(authentication);
-                    System.out.println("[JwtAuthFilter] Successfully authenticated user: " + user.getEmail());
+                        // 💡 여기가 핵심
+                        SecurityContextHolder.getContext()
+                                .setAuthentication(authentication);
+                        System.out.println("[JwtAuthFilter] Successfully authenticated user: " + user.getEmail());
+                    }
                 } else {
                     System.out.println("[JwtAuthFilter] User not found in database!");
                 }

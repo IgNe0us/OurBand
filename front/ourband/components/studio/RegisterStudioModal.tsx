@@ -117,15 +117,15 @@ export function RegisterStudioModal({ isOpen, onClose, initialData }: RegisterSt
 
   const getLatLngFromKakao = (addr: string): Promise<{ lat: number, lng: number }> => {
     return new Promise((resolve, reject) => {
-      if (!window.kakao || !window.kakao.maps || !window.kakao.maps.services) {
+      if (!(window as any).kakao || !(window as any).kakao.maps || !(window as any).kakao.maps.services) {
         // Fallback dummy coords if kakao map fails to load (e.g. 401 error)
         resolve({ lat: 37.5488, lng: 126.9141 });
         return;
       }
       
-      const geocoder = new window.kakao.maps.services.Geocoder();
+      const geocoder = new (window as any).kakao.maps.services.Geocoder();
       geocoder.addressSearch(addr, (result: any, status: any) => {
-        if (status === window.kakao.maps.services.Status.OK) {
+        if (status === (window as any).kakao.maps.services.Status.OK) {
           resolve({ lat: parseFloat(result[0].y), lng: parseFloat(result[0].x) });
         } else {
           // Fallback

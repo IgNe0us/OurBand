@@ -7,11 +7,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Music2, ArrowRight, Mail, Lock, User, Guitar, Briefcase, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { cn } from "@/lib/utils";
-
-// 💡 실제 프로젝트 구조에 맞게 API 호출 함수들을 임포트하세요.
-import { registerUserApi, loginUserApi } from "@/api/account/userService";
+import { registerUserApi, loginUserApi, sendAuthCodeApi, verifyAuthCodeApi, checkNicknameApi } from "@/api/account/userService";
 import { KOREA_REGIONS } from "@/lib/regions";
+import toast from "react-hot-toast";
+import ReCAPTCHA from "react-google-recaptcha";
+import { getSignupConfigApi } from "@/api/settings/signupConfigApi";
+import { PolicyModal } from "@/components/common/PolicyModal";
 
 export default function RegisterPage() {
   const [accountType, setAccountType] = useState<"user" | "business">("user");
@@ -27,6 +28,162 @@ export default function RegisterPage() {
   // 💡 비동기 통신을 위한 로딩 및 에러 상태 추가
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 이메일 인증 관련 상태
+  const [authCode, setAuthCode] = useState("");
+  const [isCodeSent, setIsCodeSent] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [timer, setTimer] = useState(0);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+
+  // 닉네임 중복 확인 관련 상태
+  const [isNicknameChecked, setIsNicknameChecked] = useState(false);
+  const [isCheckingNickname, setIsCheckingNickname] = useState(false);
+
+  // 약관 동의 상태
+  const [isTermsAccepted, setIsTermsAccepted] = useState(false);
+
+  // 캡차 관련 상태
+  const recaptchaRef = React.useRef<ReCAPTCHA>(null);
+
+  // 약관 모달 상태
+  const [policyModalConfig, setPolicyModalConfig] = useState<{isOpen: boolean, type: "terms" | "privacy"}>({
+    isOpen: false,
+    type: "terms"
+  });
+
+  // 설정값 (금칙어, 주 포지션)
+  const [badWordsList, setBadWordsList] = useState<string[]>([]);
+  const [signupPositions, setSignupPositions] = useState<string[]>(["보컬", "기타", "베이스", "드럼", "건반 / 피아노", "작곡 / 미디", "기타 악기"]);
+
+  React.useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const config = await getSignupConfigApi();
+        if (config.forbiddenWords && config.forbiddenWords.length > 0) {
+          setBadWordsList(config.forbiddenWords);
+        } else {
+          setBadWordsList(["시발", "씨발", "병신", "새끼", "지랄", "존나", "개새끼", "도박", "바카라", "토토", "카지노", "섹스", "야동"]);
+        }
+        
+        if (config.positions && config.positions.length > 0) {
+          setSignupPositions(config.positions);
+        }
+      } catch (e) {
+        console.error("Failed to load signup config:", e);
+        setBadWordsList(["시발", "씨발", "병신", "새끼", "지랄", "존나", "개새끼", "도박", "바카라", "토토", "카지노", "섹스", "야동"]);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isCodeSent && timer > 0 && !isEmailVerified) {
+      interval = setInterval(() => setTimer(t => t - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isCodeSent, timer, isEmailVerified]);
+
+  const getNicknameError = (nickname: string) => {
+    if (!nickname) return null;
+    if (/\s/.test(nickname)) return "공백은 사용할 수 없습니다.";
+    if (/[^a-zA-Z0-9가-힣]/.test(nickname)) return "특수문자는 사용할 수 없습니다.";
+    
+    const wordsToCheck = badWordsList.length > 0 ? badWordsList : ["시발", "씨발", "병신", "새끼", "지랄", "존나", "개새끼", "도박", "바카라", "토토", "카지노", "섹스", "야동"];
+    for (const word of wordsToCheck) {
+        if (nickname.includes(word)) return "사용할 수 없는 단어가 포함되어 있습니다.";
+    }
+
+    const hasKorean = /[가-힣]/.test(nickname);
+    if (hasKorean && (nickname.length < 2 || nickname.length > 8)) return "한글 2~8자 이내로 설정해주세요.";
+    if (!hasKorean && (nickname.length < 2 || nickname.length > 12)) return "영문/숫자 2~12자 이내로 설정해주세요.";
+    
+    return null;
+  };
+
+  const handleCheckNickname = async () => {
+    if (!name) {
+      setError("활동명(닉네임)을 입력해주세요.");
+      return;
+    }
+    
+    const errorMsg = getNicknameError(name);
+    if (errorMsg) {
+      setError(errorMsg);
+      return;
+    }
+    
+    setIsCheckingNickname(true);
+    setError(null);
+    try {
+      await checkNicknameApi(name);
+      setIsNicknameChecked(true);
+      toast.success("사용 가능한 닉네임입니다.");
+    } catch (e: any) {
+      console.error(e);
+      setError(e.response?.data?.message || "이미 사용 중인 닉네임입니다.");
+      setIsNicknameChecked(false);
+    } finally {
+      setIsCheckingNickname(false);
+    }
+  };
+
+  const handleSendCode = async () => {
+    if (!email) {
+      setError("이메일을 입력해주세요.");
+      return;
+    }
+    
+    let captchaToken = recaptchaRef.current?.getValue();
+    if (!captchaToken) {
+      try {
+        captchaToken = await recaptchaRef.current?.executeAsync();
+      } catch (e) {
+        setError("캡차 인증 중 오류가 발생했습니다.");
+        return;
+      }
+    }
+    
+    if (!captchaToken) {
+      setError("로봇이 아닙니다(캡차) 인증을 완료해주세요.");
+      return;
+    }
+
+    if (isSendingCode) return;
+    
+    setIsSendingCode(true);
+    setError(null);
+    try {
+      await sendAuthCodeApi(email, captchaToken, "register");
+      setIsCodeSent(true);
+      setTimer(300); // 5분
+      toast.success("인증번호가 발송되었습니다.");
+    } catch (e: any) {
+      console.error(e);
+      setError(e.response?.data?.message || "인증번호 발송에 실패했습니다.");
+    } finally {
+      setIsSendingCode(false);
+      // 토큰 만료를 대비해 초기화
+      recaptchaRef.current?.reset();
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (!authCode) {
+      setError("인증번호를 입력해주세요.");
+      return;
+    }
+    setError(null);
+    try {
+      await verifyAuthCodeApi(email, authCode);
+      setIsEmailVerified(true);
+      toast.success("이메일 인증이 완료되었습니다.");
+    } catch (e: any) {
+      console.error(e);
+      setError(e.response?.data?.message || "인증번호가 일치하지 않습니다.");
+    }
+  };
   
   const router = useRouter();
 
@@ -34,6 +191,12 @@ export default function RegisterPage() {
     e.preventDefault();
     
     // 1. 프론트엔드 유효성 검사
+    const passwordRegex = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+={}\[\]|\\:;"'<>,.?/\-]).{8,}$/;
+    if (!passwordRegex.test(password)) {
+        setError("비밀번호는 8자 이상이며, 영문, 숫자, 특수문자를 모두 포함해야 합니다.");
+        return;
+    }
+
     if (accountType === "business") {
         if (!businessNumber) {
             setError("사업자 등록 번호를 입력해주세요.");
@@ -55,6 +218,18 @@ export default function RegisterPage() {
 
     if (!name || !email || !password) {
         setError("닉네임, 이메일, 비밀번호를 모두 입력해야 합니다.");
+        return;
+    }
+    if (!isNicknameChecked) {
+        setError("닉네임 중복 확인을 해주세요.");
+        return;
+    }
+    if (!isEmailVerified) {
+        setError("이메일 인증을 완료해주세요.");
+        return;
+    }
+    if (!isTermsAccepted) {
+        setError("이용약관 및 개인정보처리방침에 동의해주세요.");
         return;
     }
 
@@ -154,32 +329,101 @@ export default function RegisterPage() {
         <form onSubmit={handleSignUp} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-400 pl-1">활동명 (닉네임)</label>
-            <div className="relative">
-              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-              <input 
-                type="text" 
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={accountType === "business" ? "예: 사운드홀릭 대표" : "예: 홍대 불꽃기타"} 
-                className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-12 pr-4 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white placeholder-slate-600"
-                required
-              />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <input 
+                  type="text" 
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setIsNicknameChecked(false); // 닉네임 변경 시 다시 중복확인 필요
+                  }}
+                  placeholder={accountType === "business" ? "예: 사운드홀릭 대표" : "예: 홍대 불꽃기타"} 
+                  className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-12 pr-4 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white placeholder-slate-600"
+                  required
+                />
+              </div>
+              <button 
+                type="button"
+                onClick={handleCheckNickname}
+                disabled={isCheckingNickname || isNicknameChecked || !name || !!getNicknameError(name)}
+                className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-4 rounded-xl disabled:opacity-50 whitespace-nowrap"
+              >
+                {isCheckingNickname ? "확인 중..." : isNicknameChecked ? "사용 가능" : "중복 확인"}
+              </button>
             </div>
+            {name.length > 0 && getNicknameError(name) && (
+              <p className="text-[10px] text-red-400 pl-1 pt-1">{getNicknameError(name)}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-400 pl-1">이메일</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-              <input 
-                type="email" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="musician@example.com" 
-                className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-12 pr-4 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white placeholder-slate-600"
-                required
-              />
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input 
+                    type="email" 
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setIsCodeSent(false);
+                      setIsEmailVerified(false);
+                      setAuthCode("");
+                    }}
+                    disabled={isEmailVerified}
+                    placeholder="musician@example.com" 
+                    className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-12 pr-4 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white placeholder-slate-600 disabled:opacity-50"
+                    required
+                  />
+                </div>
+                <button 
+                  type="button"
+                  onClick={handleSendCode}
+                  disabled={isSendingCode || isEmailVerified || !email}
+                  className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-4 rounded-xl disabled:opacity-50 whitespace-nowrap"
+                >
+                  {isSendingCode ? "발송 중..." : isEmailVerified ? "인증 완료" : "인증 발송"}
+                </button>
+              </div>
+              
+              <div>
+                  {/* @ts-ignore */}
+                  <ReCAPTCHA
+                    ref={recaptchaRef}
+                    size="invisible"
+                    badge="bottomleft"
+                    sitekey="6LcAiQgtAAAAAAUyTXZ7us-Cb2_MMwlpBZDq4RCa"
+                    theme="dark"
+                  />
+              </div>
             </div>
+            
+            {isCodeSent && !isEmailVerified && (
+              <div className="flex gap-2 mt-2">
+                <div className="relative flex-1">
+                  <input 
+                    type="text" 
+                    value={authCode}
+                    onChange={(e) => setAuthCode(e.target.value)}
+                    placeholder="인증번호 6자리" 
+                    className="w-full bg-secondary border border-border rounded-xl py-3.5 px-4 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white placeholder-slate-600"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-red-400">
+                    {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}
+                  </span>
+                </div>
+                <button 
+                  type="button"
+                  onClick={handleVerifyCode}
+                  className="bg-primary hover:bg-indigo-600 text-white text-xs font-bold px-4 rounded-xl whitespace-nowrap"
+                >
+                  확인
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -190,12 +434,17 @@ export default function RegisterPage() {
                 type="password" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="최소 8자 이상" 
+                placeholder="영문, 숫자, 특수문자 조합 8자 이상" 
                 className="w-full bg-secondary border border-border rounded-xl py-3.5 pl-12 pr-4 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white placeholder-slate-600"
                 required
                 minLength={8}
               />
             </div>
+            {password.length > 0 && !/^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+={}\[\]|\\:;"'<>,.?/\-]).{8,}$/.test(password) && (
+              <p className="text-[10px] text-red-400 pl-1 pt-1">
+                비밀번호는 8자 이상이며, 영문, 숫자, 특수문자를 모두 포함해야 합니다.
+              </p>
+            )}
           </div>
 
           <AnimatePresence mode="popLayout">
@@ -217,13 +466,9 @@ export default function RegisterPage() {
                     required
                   >
                     <option value="" disabled>포지션을 선택해주세요</option>
-                    <option value="vocal">보컬</option>
-                    <option value="guitar">기타</option>
-                    <option value="bass">베이스</option>
-                    <option value="drum">드럼</option>
-                    <option value="keyboard">건반 / 피아노</option>
-                    <option value="midi">작곡 / 미디</option>
-                    <option value="other">기타 악기</option>
+                    {signupPositions.map((pos) => (
+                      <option key={pos} value={pos}>{pos}</option>
+                    ))}
                   </select>
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">▼</div>
                 </div>
@@ -307,14 +552,27 @@ export default function RegisterPage() {
 
           {/* 💡 에러 발생 시 UI 출력 영역 */}
           {error && (
-            <div className="p-3 text-sm text-red-400 bg-red-950/50 border border-red-900/50 rounded-xl">
+            <div className="p-3 text-sm text-red-400 bg-red-950/50 border border-red-900/50 rounded-xl text-center whitespace-pre-wrap">
               {error}
             </div>
           )}
 
+          <div className="flex items-center gap-3 mt-4 px-1">
+            <input 
+              type="checkbox" 
+              id="terms" 
+              checked={isTermsAccepted} 
+              onChange={(e) => setIsTermsAccepted(e.target.checked)} 
+              className="w-4 h-4 rounded border-slate-600 bg-secondary focus:ring-primary text-primary cursor-pointer accent-primary" 
+            />
+            <label htmlFor="terms" className="text-sm text-slate-300 cursor-pointer select-none">
+              <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModalConfig({ isOpen: true, type: "terms" }); }} className="text-primary hover:underline font-medium">이용약관</button> 및 <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModalConfig({ isOpen: true, type: "privacy" }); }} className="text-primary hover:underline font-medium">개인정보처리방침</button>에 동의합니다. (필수)
+            </label>
+          </div>
+
           <button 
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || !isEmailVerified || !isNicknameChecked || !isTermsAccepted}
             className="w-full bg-primary hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl py-4 flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)] transition-all group mt-6"
           >
             {isLoading ? "가입 처리 중..." : "가입 완료하기"}
@@ -328,7 +586,18 @@ export default function RegisterPage() {
             로그인
           </Link>
         </div>
+
+        <div className="mt-6 text-[10px] text-slate-500 text-center leading-relaxed px-4">
+          본 사이트는 reCAPTCHA에 의해 보호되며 Google <br/>
+          <a href="https://policies.google.com/privacy" className="underline hover:text-slate-300" target="_blank" rel="noreferrer">개인정보처리방침</a> 및 <a href="https://policies.google.com/terms" className="underline hover:text-slate-300" target="_blank" rel="noreferrer">이용약관</a>이 적용됩니다.
+        </div>
       </motion.div>
+
+      <PolicyModal 
+        isOpen={policyModalConfig.isOpen} 
+        onClose={() => setPolicyModalConfig({ ...policyModalConfig, isOpen: false })} 
+        type={policyModalConfig.type} 
+      />
     </div>
   );
 }

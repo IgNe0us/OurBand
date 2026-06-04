@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -52,6 +53,7 @@ public class TrendService {
      * 매 시간 0분 0초에 트렌드 데이터 갱신
      */
     @Scheduled(cron = "0 0 * * * *")
+    @Transactional
     public void updateTrendsScheduler() {
         log.info("Starting hourly trend update...");
         updateTrendingBands();
@@ -92,7 +94,7 @@ public class TrendService {
                 .collect(Collectors.groupingBy(BandFollow::getBandId, Collectors.counting()));
 
         // Fetch recent posts to aggregate likes and comments
-        List<BandPost> recentPosts = bandPostRepository.findByCreatedAtAfter(sevenDaysAgo);
+        List<BandPost> recentPosts = bandPostRepository.findByIsHiddenFalseAndCreatedAtAfter(sevenDaysAgo);
         Map<Long, Integer> recentLikesByBand = recentPosts.stream()
                 .collect(Collectors.groupingBy(BandPost::getBandId, Collectors.summingInt(p -> p.getLikeCount() != null ? p.getLikeCount() : 0)));
         Map<Long, Integer> recentCommentsByBand = recentPosts.stream()
@@ -133,7 +135,7 @@ public class TrendService {
 
     public List<JamPostResponseDTO> updateTrendingJams() {
         LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
-        List<JamPost> recentJams = jamPostRepository.findByCreatedAtAfter(sevenDaysAgo);
+        List<JamPost> recentJams = jamPostRepository.findByIsHiddenFalseAndCreatedAtAfter(sevenDaysAgo);
 
         Map<JamPost, Double> scores = new HashMap<>();
         LocalDateTime now = LocalDateTime.now();
@@ -179,7 +181,7 @@ public class TrendService {
         boolean isRecruiting = !recruitingPositions.isEmpty();
         long followerCount = bandFollowRepository.countByBandId(band.getId());
 
-        BandPost latestVideoPost = bandPostRepository.findFirstByBandIdAndMediaTypeOrderByCreatedAtDesc(band.getId(), "VIDEO");
+        BandPost latestVideoPost = bandPostRepository.findFirstByBandIdAndMediaTypeAndIsHiddenFalseOrderByCreatedAtDesc(band.getId(), "VIDEO");
         String latestVideoUrl = latestVideoPost != null ? latestVideoPost.getMediaUrl() : null;
 
         BandMember leader = members.stream()

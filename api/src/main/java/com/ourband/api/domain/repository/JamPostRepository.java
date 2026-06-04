@@ -10,9 +10,9 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface JamPostRepository extends JpaRepository<JamPost, Long> {
-    Page<JamPost> findByUser_UserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+    Page<JamPost> findByUser_UserIdAndIsHiddenFalseOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
-    @Query("SELECT j FROM JamPost j WHERE " +
+    @Query("SELECT j FROM JamPost j WHERE j.isHidden = false AND " +
            "(:genre IS NULL OR :genre = '전체 장르' OR j.genre = :genre) AND " +
            "(:instrument IS NULL OR :instrument = '전체 악기' OR j.instrument = :instrument) " +
            "ORDER BY j.createdAt DESC")
@@ -20,5 +20,5 @@ public interface JamPostRepository extends JpaRepository<JamPost, Long> {
                                  @Param("instrument") String instrument,
                                  Pageable pageable);
 
-    List<JamPost> findByCreatedAtAfter(java.time.LocalDateTime since);
+    List<JamPost> findByIsHiddenFalseAndCreatedAtAfter(java.time.LocalDateTime since);
 }

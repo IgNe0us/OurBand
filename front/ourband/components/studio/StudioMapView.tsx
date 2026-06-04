@@ -26,9 +26,9 @@ export function StudioMapView({ center, studios, onExternalClick }: StudioMapVie
   const defaultLng = center?.[1] ?? 126.9200;
 
   useEffect(() => {
-    if (map && window.kakao && window.kakao.maps) {
+    if (map && (window as any).kakao && (window as any).kakao.maps) {
       // 강제로 지도의 중심을 이동 (panto 애니메이션 버그 우회)
-      map.setCenter(new window.kakao.maps.LatLng(defaultLat, defaultLng));
+      map.setCenter(new (window as any).kakao.maps.LatLng(defaultLat, defaultLng));
     }
   }, [map, defaultLat, defaultLng]);
 

@@ -54,7 +54,7 @@ export default function CommunityCategoryPage() {
   
   const [posts, setPosts] = useState<CommunityPostData[]>([]);
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
-  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ type: string, id: string | number, name: string } | null>(null);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<CommunityPostData | null>(null);
@@ -305,7 +305,7 @@ export default function CommunityCategoryPage() {
                   )}
                   {currentUserId !== post.userId && (
                     <button 
-                      onClick={(e) => { e.stopPropagation(); setReportModalOpen(true); }}
+                      onClick={(e) => { e.stopPropagation(); setReportTarget({ type: 'COMMUNITY_POST', id: post.id!, name: '게시물' }); }}
                       className="text-slate-600 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5 shrink-0"
                       title="신고하기"
                     >
@@ -399,11 +399,15 @@ export default function CommunityCategoryPage() {
       )}
 
       {/* Report Modal */}
-      <ReportModal 
-        isOpen={reportModalOpen} 
-        onClose={() => setReportModalOpen(false)} 
-        targetName="게시글"
-      />
+      {reportTarget && (
+        <ReportModal 
+          isOpen={true} 
+          onClose={() => setReportTarget(null)} 
+          targetName={reportTarget.name}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+        />
+      )}
     </div>
   );
 }

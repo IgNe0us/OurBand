@@ -16,7 +16,7 @@ export default function UsersPage() {
   // 자동완성 관련 상태
   const [suggestions, setSuggestions] = useState<UserSearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLFormElement>(null);
   const skipNextEffect = useRef(false);
 
   // 드롭다운 외부 클릭 시 닫기

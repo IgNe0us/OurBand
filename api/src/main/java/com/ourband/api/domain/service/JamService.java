@@ -44,6 +44,11 @@ public class JamService {
     public JamPostResponseDTO getJamPost(Long jamId, Long currentUserId) {
         JamPost jamPost = jamPostRepository.findById(jamId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 잼 영상입니다."));
+        
+        if (jamPost.isHidden() || jamPost.isDeleted()) {
+            throw new com.ourband.api.global.exception.ContentHiddenException("관리자에 의해 숨겨진 페이지입니다.");
+        }
+        
         return mapToDTO(jamPost, currentUserId);
     }
 
@@ -100,7 +105,7 @@ public class JamService {
     @Transactional(readOnly = true)
     public Page<JamPostResponseDTO> getUserJamPosts(Long targetUserId, int page, int size, Long currentUserId) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<JamPost> posts = jamPostRepository.findByUser_UserIdOrderByCreatedAtDesc(targetUserId, pageable);
+        Page<JamPost> posts = jamPostRepository.findByUser_UserIdAndIsHiddenFalseOrderByCreatedAtDesc(targetUserId, pageable);
         return posts.map(post -> mapToDTO(post, currentUserId));
     }
 
@@ -187,15 +192,29 @@ public class JamService {
 
     @Transactional(readOnly = true)
     public List<JamPostCommentResponseDTO> getComments(Long jamId) {
-        List<JamPostComment> topLevelComments = jamPostCommentRepository.findByJamIdAndParentIdIsNullOrderByCreatedAtAsc(jamId);
-        return topLevelComments.stream()
-                .map(comment -> {
-                    JamPostCommentResponseDTO dto = mapCommentToDTO(comment);
-                    List<JamPostComment> replies = jamPostCommentRepository.findByParentIdOrderByCreatedAtAsc(comment.getId());
-                    dto.setReplies(replies.stream().map(this::mapCommentToDTO).collect(Collectors.toList()));
-                    return dto;
-                })
-                .collect(Collectors.toList());
+        List<JamPostComment> allComments = jamPostCommentRepository.findByJamIdOrderByCreatedAtAsc(jamId);
+        java.util.Map<Long, JamPostCommentResponseDTO> dtoMap = allComments.stream()
+                .collect(Collectors.toMap(JamPostComment::getId, this::mapCommentToDTO));
+        
+        List<JamPostCommentResponseDTO> rootComments = new java.util.ArrayList<>();
+        for (JamPostComment c : allComments) {
+            JamPostCommentResponseDTO dto = dtoMap.get(c.getId());
+            if (dto.getReplies() == null) {
+                dto.setReplies(new java.util.ArrayList<>());
+            }
+            if (c.getParentId() == null) {
+                rootComments.add(dto);
+            } else {
+                JamPostCommentResponseDTO parentDto = dtoMap.get(c.getParentId());
+                if (parentDto != null) {
+                    if (parentDto.getReplies() == null) {
+                        parentDto.setReplies(new java.util.ArrayList<>());
+                    }
+                    parentDto.getReplies().add(dto);
+                }
+            }
+        }
+        return rootComments;
     }
 
     @Transactional
@@ -244,7 +263,7 @@ public class JamService {
                 .authorId(comment.getUserId())
                 .authorName(authorName)
                 .authorProfileImageUrl(authorProfileImageUrl)
-                .content(comment.getContent())
+                .content(comment.isDeleted() ? "관리자에 의해 삭제 처리된 댓글입니다." : (comment.isHidden() ? "관리자에 의해 숨김 처리 된 댓글입니다." : comment.getContent()))
                 .createdAt(comment.getCreatedAt())
                 .updatedAt(comment.getUpdatedAt())
                 .parentId(comment.getParentId())
@@ -275,9 +294,9 @@ public class JamService {
                 .portfolioId(j.getPortfolio() != null ? j.getPortfolio().getId() : null)
                 .parentId(j.getParentJam() != null ? j.getParentJam().getId() : null)
                 .originalAuthorName(originalAuthorName)
-                .mediaUrl(j.getMediaUrl())
-                .title(j.getTitle())
-                .description(j.getDescription())
+                .mediaUrl((j.isDeleted() || j.isHidden()) ? null : j.getMediaUrl())
+                .title(j.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (j.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : j.getTitle()))
+                .description(j.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (j.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : j.getDescription()))
                 .instrument(j.getInstrument())
                 .genre(j.getGenre())
                 .likeCount(j.getLikeCount())

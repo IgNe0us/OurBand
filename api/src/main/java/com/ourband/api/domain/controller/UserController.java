@@ -9,10 +9,13 @@ import com.ourband.api.domain.dto.user.ProfileImageUpdateRequestDTO;
 import com.ourband.api.domain.dto.user.UserProfileResponseDTO;
 import com.ourband.api.domain.dto.user.UserProfileUpdateRequestDTO;
 import com.ourband.api.domain.dto.user.UserRequestDTO;
+import com.ourband.api.domain.dto.user.UserSearchResponseDTO;
 import com.ourband.api.domain.model.Profile;
 import com.ourband.api.domain.model.User;
 import com.ourband.api.domain.model.BandMember;
 import com.ourband.api.domain.service.UserService;
+import com.ourband.api.domain.service.SignupConfigService;
+import com.ourband.api.domain.service.MailService;
 import com.ourband.api.domain.repository.BandMemberRepository;
 import com.ourband.api.global.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,10 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.HttpHeaders;
 import com.ourband.api.domain.dto.user.UserProfileResponseDTO;
 import com.ourband.api.domain.dto.user.UserSearchResponseDTO;
+import com.ourband.api.domain.service.RateLimitService;
+import com.ourband.api.domain.service.CaptchaService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.HashMap;
 import java.util.List;
@@ -37,6 +44,184 @@ public class UserController {
     private final UserService userService;
     private final BandMemberRepository bandMemberRepository;
     private final JwtUtil jwtUtil;
+    private final MailService mailService;
+    private final RateLimitService rateLimitService;
+    private final CaptchaService captchaService;
+    private final PasswordEncoder passwordEncoder;
+    private final SignupConfigService signupConfigService;
+
+    /**
+     * 이메일 인증번호 발송 API
+     */
+    @PostMapping("/send-auth-code")
+    public ResponseEntity<?> sendAuthCode(@RequestBody Map<String, String> body, HttpServletRequest request) {
+        String email = body.get("email");
+        String captchaToken = body.get("captchaToken");
+        
+        if (email == null || email.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "이메일을 입력해 주세요."));
+        }
+
+        // 1. Rate Limit 검증
+        String clientIp = getClientIp(request);
+        if (!rateLimitService.isAllowed(clientIp, "email_send")) {
+            return ResponseEntity.status(429).body(Map.of("message", "메일 발송 횟수가 초과되었습니다. 잠시 후 다시 시도해주세요."));
+        }
+
+        // 2. Captcha 검증
+        if (!captchaService.verifyToken(captchaToken)) {
+            return ResponseEntity.badRequest().body(Map.of("message", "자동 가입 방지 인증(캡차)에 실패했습니다."));
+        }
+        
+        // 이메일 중복 체크 (회원가입 용도일 경우)
+        String type = body.getOrDefault("type", "register");
+        boolean userExists = userService.findUserByEmail(email).isPresent();
+        
+        if ("register".equals(type) && userExists) {
+            return ResponseEntity.badRequest().body(Map.of("message", "이미 가입된 이메일입니다."));
+        }
+        if ("find-password".equals(type) && !userExists) {
+            return ResponseEntity.badRequest().body(Map.of("message", "가입되지 않은 이메일입니다."));
+        }
+
+        try {
+            mailService.sendAuthCode(email);
+            return ResponseEntity.ok(Map.of("message", "인증번호가 발송되었습니다."));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /**
+     * 닉네임 중복 확인 API
+     */
+    @GetMapping("/check-nickname")
+    public ResponseEntity<?> checkNickname(@RequestParam("nickname") String nickname) {
+        if (nickname == null || nickname.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "닉네임을 입력해 주세요."));
+        }
+        
+        List<String> forbiddenWords = signupConfigService.getAllForbiddenWords();
+        for (String word : forbiddenWords) {
+            if (nickname.contains(word)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "사용할 수 없는 단어가 포함되어 있습니다."));
+            }
+        }
+        
+        boolean isDuplicate = userService.findUserByNickname(nickname).isPresent();
+        if (isDuplicate) {
+            return ResponseEntity.badRequest().body(Map.of("message", "이미 사용 중인 닉네임입니다."));
+        }
+        
+        return ResponseEntity.ok(Map.of("message", "사용 가능한 닉네임입니다."));
+    }
+
+    /**
+     * 이메일 인증번호 확인 API
+     */
+    @PostMapping("/verify-auth-code")
+    public ResponseEntity<?> verifyAuthCode(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String code = body.get("code");
+        
+        if (email == null || code == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "이메일과 인증번호를 모두 입력해 주세요."));
+        }
+
+        try {
+            boolean isVerified = mailService.verifyAuthCode(email, code);
+            if (isVerified) {
+                return ResponseEntity.ok(Map.of("message", "이메일 인증이 완료되었습니다."));
+            } else {
+                return ResponseEntity.badRequest().body(Map.of("message", "인증번호가 일치하지 않습니다."));
+            }
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /**
+     * 아이디(이메일) 찾기 안내 메일 발송 API
+     */
+    @PostMapping("/find-id-send-email")
+    public ResponseEntity<?> findIdSendEmail(@RequestBody Map<String, String> body, HttpServletRequest request) {
+        String nickname = body.get("nickname");
+        String captchaToken = body.get("captchaToken");
+
+        // 1. Rate Limit 검증
+        String clientIp = getClientIp(request);
+        if (!rateLimitService.isAllowed(clientIp, "email_send")) {
+            return ResponseEntity.status(429).body(Map.of("message", "메일 발송 횟수가 초과되었습니다. 잠시 후 다시 시도해주세요."));
+        }
+
+        // 2. Captcha 검증
+        if (!captchaService.verifyToken(captchaToken)) {
+            return ResponseEntity.badRequest().body(Map.of("message", "자동 가입 방지 인증(캡차)에 실패했습니다."));
+        }
+
+        // 3. 보안 정책: 닉네임 존재 여부와 무관하게 무조건 동일한 성공 메시지 반환
+        try {
+            userService.findUserByNickname(nickname).ifPresent(user -> {
+                mailService.sendFindIdEmail(user.getEmail());
+            });
+            return ResponseEntity.ok(Map.of("message", "가입된 계정이 있다면 등록된 이메일로 안내 메일을 발송했습니다."));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("message", "안내 메일 발송 중 오류가 발생했습니다."));
+        }
+    }
+
+    /**
+     * 비밀번호 재설정 API
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String newPassword = body.get("newPassword");
+        // 이 API는 이미 이전에 인증번호를 확인한 이후에 호출되거나, 
+        // 인증번호와 함께 호출되도록 설계할 수 있습니다.
+        // 보안 강화를 위해 인증번호를 다시 한번 함께 받아 검증하는 것이 좋습니다.
+        String code = body.get("code");
+
+        if (email == null || newPassword == null || code == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "필수 항목이 누락되었습니다."));
+        }
+
+        try {
+            // 인증번호 검증 (성공 시 바로 삭제되지 않고 유지됨)
+            boolean isVerified = mailService.verifyAuthCode(email, code);
+            if (!isVerified) {
+                return ResponseEntity.badRequest().body(Map.of("message", "인증번호가 일치하지 않습니다."));
+            }
+
+            User user = userService.findUserByEmail(email).orElse(null);
+            if (user == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "가입되지 않은 이메일입니다."));
+            }
+
+            // 기존 비밀번호와 동일한지 체크
+            if (passwordEncoder.matches(newPassword, user.getPassword())) {
+                return ResponseEntity.badRequest().body(Map.of("message", "기존에 사용하던 비밀번호로는 변경할 수 없습니다."));
+            }
+
+            // 비밀번호 변경 로직
+            userService.updatePassword(email, newPassword);
+            
+            // 모든 과정 완료 후 인증번호 폐기
+            mailService.deleteAuthCode(email);
+
+            return ResponseEntity.ok(Map.of("message", "비밀번호가 성공적으로 변경되었습니다."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
+    }
 
     /**
      * 로그인 API
@@ -184,7 +369,20 @@ public class UserController {
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody UserRequestDTO requestDTO) {
         try {
+            if (requestDTO.getNickname() != null) {
+                List<String> forbiddenWords = signupConfigService.getAllForbiddenWords();
+                for (String word : forbiddenWords) {
+                    if (requestDTO.getNickname().contains(word)) {
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "사용할 수 없는 단어가 포함되어 있습니다."));
+                    }
+                }
+            }
+            
             userService.registerUser(requestDTO);
+            
+            // 회원가입 완료 후 사용된 인증번호 폐기
+            mailService.deleteAuthCode(requestDTO.getEmail());
+            
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("message", "회원가입이 완료되었습니다."));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));

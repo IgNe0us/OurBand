@@ -208,13 +208,32 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
     }
   };
 
-  const renderComment = (c: any, depth = 0) => {
+  // 댓글 평탄화 함수 (재귀를 풀어서 UI가 화면 밖으로 나가는 것을 방지)
+  const flattenComments = (commentsList: any[], depth = 0): any[] => {
+    return commentsList.reduce((acc, c) => {
+      acc.push({ ...c, depth });
+      if (c.replies && c.replies.length > 0) {
+        acc.push(...flattenComments(c.replies, depth + 1));
+      }
+      return acc;
+    }, []);
+  };
+
+  const renderComment = (c: any) => {
     const isEditing = editingComment === c.id;
     const isReplying = replyingTo === c.id;
-    const isAuthor = currentUserId === c.authorId;
+    const isAuthor = currentUserId === c.userId || currentUserId === c.authorId;
+    
+    // 깊이에 따른 들여쓰기 계산 (3단위로 순환하여 화면 밖으로 나가지 않게 함)
+    const effectiveDepth = c.depth === 0 ? 0 : ((c.depth - 1) % 4) + 1;
+    const isRoot = c.depth === 0;
 
     return (
-      <div key={c.id} className={cn("flex gap-3", depth > 0 && "ml-8 pl-4 border-l-2 border-border/40")}>
+      <div 
+        key={c.id} 
+        style={{ marginLeft: effectiveDepth > 0 ? `${effectiveDepth * 2.5}rem` : '0' }}
+        className={cn("flex gap-3 relative", isRoot ? "mt-6" : "mt-3", effectiveDepth > 0 && "pl-4 border-l-2 border-border/40")}
+      >
         <div 
           className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-secondary shrink-0 border border-border flex items-center justify-center font-bold text-xs text-white overflow-hidden mt-0.5 cursor-pointer"
           onClick={() => openUserProfile(Number(c.authorId), c.authorName, c.authorProfileImageUrl)}
@@ -238,15 +257,13 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
               )}
             </div>
             <div className="flex items-center gap-0.5">
-              {depth === 0 && (
                 <button
                   onClick={() => { setReplyingTo(isReplying ? null : c.id); setReplyText(""); setEditingComment(null); }}
                   className="text-slate-500 hover:text-primary transition-colors p-1.5 rounded-md hover:bg-white/5"
                   title="답글"
                 >
-                  <Reply size={13} />
+                  <Reply size={14} />
                 </button>
-              )}
               {isAuthor && (
                 <>
                   <button
@@ -310,12 +327,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
               </div>
             </div>
           )}
-
-          {c.replies && c.replies.length > 0 && (
-            <div className="mt-4 space-y-4">
-              {c.replies.map((reply: any) => renderComment(reply, depth + 1))}
-            </div>
-          )}
+          {/* 대댓글 목록 렌더링 부분은 평탄화 처리로 삭제됨 */}
         </div>
       </div>
     );
@@ -387,10 +399,13 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
                       <MessageSquare size={18} className="text-primary" />
                       댓글 <span className="text-slate-400 text-sm font-normal">{post.commentCount}</span>
                     </h3>
-
-                    <div className="space-y-6 mb-8">
-                    {post.commentsList.map((comment: any) => renderComment(comment))}
-                  </div>
+                    {post.commentsList && post.commentsList.length > 0 ? (
+                      <div className="pb-4">
+                        {flattenComments(post.commentsList).map((comment: any) => renderComment(comment))}
+                      </div>
+                    ) : (
+                      <div className="text-slate-500 text-sm text-center py-8">댓글이 없습니다.</div>
+                    )}
                   </div>
                 </div>
               </div>

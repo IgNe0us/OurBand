@@ -9,5 +9,6 @@ import java.util.List;
 @Repository
 public interface JamPostCommentRepository extends JpaRepository<JamPostComment, Long> {
     List<JamPostComment> findByJamIdAndParentIdIsNullOrderByCreatedAtAsc(Long jamId);
+    List<JamPostComment> findByJamIdOrderByCreatedAtAsc(Long jamId);
     List<JamPostComment> findByParentIdOrderByCreatedAtAsc(Long parentId);
 }

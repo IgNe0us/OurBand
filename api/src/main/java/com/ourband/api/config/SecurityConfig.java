@@ -55,11 +55,22 @@ public class SecurityConfig {
                     "/api/v1/users/register",
                     "/api/v1/users/find-id",
                     "/api/v1/users/find-password",
+                    "/api/v1/users/send-auth-code",
+                    "/api/v1/users/verify-auth-code",
+                    "/api/v1/users/check-nickname",
+                    "/api/v1/users/find-id-send-email",
+                    "/api/v1/users/reset-password",
+                    "/api/v1/settings/public",
+                    "/api/v1/public/**",
                     "/api/v1/uploads",
                     "/uploads/**",
                     "/ws-chat/**",
                     "/error"
                 ).permitAll()
+                // RBAC for Admin routes
+                .requestMatchers(org.springframework.http.HttpMethod.PUT, "/api/v1/admin/users/*/role").hasRole("SYSTEM_ADMIN")
+                .requestMatchers("/api/v1/admin/settings/**").hasRole("SYSTEM_ADMIN")
+                .requestMatchers("/api/v1/admin/**").hasAnyRole("SYSTEM_ADMIN", "SERVICE_ADMIN")
                 .anyRequest().authenticated()
             )
 

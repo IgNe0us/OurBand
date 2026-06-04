@@ -48,4 +48,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorResponse.setErrorCode("VALIDATION_FAILED");
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
+
+    // --------------------------------------------------------------------
+    // 3. 관리자 숨김 콘텐츠 접근 차단
+    // --------------------------------------------------------------------
+
+    @ExceptionHandler(com.ourband.api.global.exception.ContentHiddenException.class)
+    public ResponseEntity<ErrorResponse> handleContentHiddenException(com.ourband.api.global.exception.ContentHiddenException ex) {
+        ErrorResponse errorResponse = new ErrorResponse();
+        errorResponse.setStatus(HttpStatus.FORBIDDEN.value()); // 403 Forbidden
+        errorResponse.setMessage(ex.getMessage());
+        errorResponse.setErrorCode("CONTENT_HIDDEN");
+        return new ResponseEntity<>(errorResponse, HttpStatus.FORBIDDEN);
+    }
 }

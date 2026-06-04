@@ -41,7 +41,7 @@ export function DesktopSidebar() {
     getUserInfoApi()
       .then((data) => {
         setUser(data);
-        setIsAdmin(data.type === 'admin');
+        setIsAdmin(data.type === 'system_admin' || data.type === 'service_admin' || data.type === 'admin');
       })
       .catch((err) => {
         console.error("Failed to load user info in sidebar", err);
@@ -220,6 +220,11 @@ export function DesktopSidebar() {
             </div>
           </div>
         )}
+        <div className="mt-6 flex justify-center gap-4 text-[10px] text-slate-500 font-medium">
+          <Link href="/terms" className="hover:text-slate-300 transition-colors">이용약관</Link>
+          <span>|</span>
+          <Link href="/privacy" className="hover:text-slate-300 transition-colors">개인정보처리방침</Link>
+        </div>
       </div>
     </aside>
   );

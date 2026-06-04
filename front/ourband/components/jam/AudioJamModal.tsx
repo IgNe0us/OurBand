@@ -1,6 +1,6 @@
 "use client";
 // @ts-nocheck
-import { Play, Heart, MessageCircle, Share2, Plus, X, Send, Check, User, Volume2, VolumeX } from "lucide-react";
+import { Play, Heart, MessageCircle, Share2, Plus, X, Send, Check, User, Volume2, VolumeX, Reply, Edit3, Trash2, Flag } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
@@ -9,6 +9,7 @@ import { addHistoryCommentApi, updateHistoryCommentApi, deleteHistoryCommentApi,
 import { apiClient } from "@/api/baseApi";
 import { useUserProfile } from "@/store/userProfileContext";
 import { toggleJamLikeApi, getJamCommentsApi, createJamCommentApi, updateJamCommentApi, deleteJamCommentApi, incrementJamShareApi } from "@/api/jam/jamService";
+import { ReportModal } from "@/components/common/ReportModal";
 
 export type PopularJamVideo = VideoPost & { 
   likes?: number; 
@@ -77,6 +78,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ id: number, author: string } | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: number, text: string } | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ type: string, id: string | number, name: string } | null>(null);
 
   // 💡 1. 비디오 엘리먼트를 제어하기 위한 ref 추가
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -150,6 +152,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
                 avatar: c.authorProfileImageUrl || c.profilePictureUrl || "",
                 text: c.content,
                 time: formatRelativeTime(c.createdAt),
+                isEdited: c.updatedAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000,
                 replies: c.replies ? c.replies.map(mapComment) : []
               });
               setComments(res.map(mapComment));
@@ -168,6 +171,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
                 avatar: c.authorProfileImageUrl || c.profilePictureUrl || "",
                 text: c.content,
                 time: formatRelativeTime(c.createdAt),
+                isEdited: c.updatedAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000,
                 replies: c.replies ? c.replies.map(mapComment) : []
               });
               setComments(res.data.map(mapComment));
@@ -270,7 +274,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
           const addReply = (list: any[]): any[] => list.map(c => c.id === replyingTo.id ? { ...c, replies: [...(c.replies || []), newC] } : { ...c, replies: c.replies ? addReply(c.replies) : [] });
           setComments(prev => addReply(prev));
         } else {
-          setComments(prev => [newC, ...prev]);
+          setComments(prev => [...prev, newC]);
         }
         
         const newCount = localCommentCount + 1;
@@ -472,6 +476,17 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
               {/* 💡 4. 기존 {post.sharesCount ?? 0} 대신 실시간 상태 변수로 교체! */}
               <span className="text-white text-xs font-semibold drop-shadow-md">{localShares}</span>
             </button>
+
+            {post.authorId !== currentUserId && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); setReportTarget({ type: isJam ? 'JAM_POST' : 'HISTORY_POST', id: post.id!, name: '게시물' }); }} 
+                className="flex flex-col items-center gap-1.5 group mt-4"
+              >
+                <div className="w-10 h-10 bg-background/20 backdrop-blur-md rounded-full flex items-center justify-center border border-border group-hover:bg-rose-500/20 transition-colors">
+                  <Flag size={18} className="text-white/80 group-hover:text-rose-500" />
+                </div>
+              </button>
+            )}
           </div>
 
           {/* Bottom Info */}
@@ -540,10 +555,29 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
                     <h3 className="text-lg font-black text-white">댓글 <span className="text-primary text-sm ml-1">{localCommentCount}</span></h3>
                     <button onClick={() => { setActiveCommentId(null); setReplyingTo(null); setEditingComment(null); setCommentText(''); }} className="text-slate-400 hover:text-white"><X size={20}/></button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-5 space-y-5 hide-scrollbar">
+                  <div className="flex-1 overflow-y-auto p-5 pb-8 hide-scrollbar">
                     {(() => {
-                      const renderComment = (c: any, isReply: boolean = false) => (
-                        <div key={`comment-${c.id}`} className={cn("flex gap-3 group", isReply ? "mt-3 ml-8 relative before:absolute before:-left-5 before:top-4 before:w-4 before:h-px before:bg-border before:content-['']" : "")}>
+                      const flattenComments = (commentsList: any[], depth = 0): any[] => {
+                        return commentsList.reduce((acc, c) => {
+                          acc.push({ ...c, depth });
+                          if (c.replies && c.replies.length > 0) {
+                            acc.push(...flattenComments(c.replies, depth + 1));
+                          }
+                          return acc;
+                        }, []);
+                      };
+
+                      const renderComment = (c: any) => {
+                        const effectiveDepth = c.depth === 0 ? 0 : ((c.depth - 1) % 4) + 1;
+                        const isRoot = c.depth === 0;
+                        const isReply = effectiveDepth > 0;
+                        
+                        return (
+                          <div 
+                            key={`comment-${c.id}`} 
+                            style={{ marginLeft: isReply ? `${effectiveDepth * 2.5}rem` : '0' }}
+                            className={cn("flex gap-3 group relative", isRoot ? "mt-5" : "mt-3", isReply ? "before:absolute before:-left-5 before:top-4 before:w-4 before:h-px before:bg-border before:content-['']" : "")}
+                          >
                             <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 border border-border flex items-center justify-center overflow-hidden">
                               {c.avatar ? (
                                 <img src={c.avatar} alt={c.author} className="w-full h-full object-cover" />
@@ -555,32 +589,40 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-bold text-slate-300">{c.author}</span>
-                                <span className="text-[10px] text-slate-500">{c.time}</span>
+                                <span className="text-[10px] text-slate-500">{c.time} {c.isEdited && "(수정 됨)"}</span>
                               </div>
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                              <div className="group-hover:opacity-100 transition-opacity flex gap-2">
+                                  <button onClick={() => {setReplyingTo({ id: c.id, author: c.author }); setEditingComment(null); setCommentText('');}} className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5" title="답글">
+                                    <Reply size={13} />
+                                  </button>
                                 {c.authorId === currentUserId && (
                                   <>
-                                    <button onClick={() => {setEditingComment({ id: c.id, text: c.text }); setCommentText(c.text); setReplyingTo(null);}} className="text-[10px] text-slate-400 hover:text-white">수정</button>
-                                    <button onClick={() => handleDeleteComment(c.id)} className="text-[10px] text-slate-400 hover:text-red-500">삭제</button>
+                                    <button onClick={() => {setEditingComment({ id: c.id, text: c.text }); setCommentText(c.text); setReplyingTo(null);}} className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5" title="수정">
+                                      <Edit3 size={13} />
+                                    </button>
+                                    {(!c.replies || c.replies.length === 0) && (
+                                      <button onClick={() => handleDeleteComment(c.id)} className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5" title="삭제">
+                                        <Trash2 size={13} />
+                                      </button>
+                                    )}
                                   </>
                                 )}
-                                {!isReply && (
-                                  <button onClick={() => {setReplyingTo({ id: c.id, author: c.author }); setEditingComment(null); setCommentText('');}} className="text-[10px] text-slate-400 hover:text-primary">답글 달기</button>
+                                {c.authorId !== currentUserId && (
+                                  <button onClick={() => setReportTarget({ type: isJam ? 'JAM_COMMENT' : 'HISTORY_COMMENT', id: c.id, name: '댓글' })} className="text-slate-500 hover:text-rose-500 transition-colors p-1.5 rounded-md hover:bg-white/5" title="신고">
+                                    <Flag size={13} />
+                                  </button>
                                 )}
+                                
                               </div>
                             </div>
                             <p className="text-sm text-white break-all">{c.text}</p>
                             
-                            {/* Replies */}
-                            {c.replies && c.replies.length > 0 && (
-                              <div className="mt-2">
-                                {c.replies.map((reply: any) => renderComment(reply, true))}
-                              </div>
-                            )}
+                            {/* 대댓글 렌더링 부분은 평탄화 처리로 삭제됨 */}
                           </div>
                         </div>
-                      );
-                      return comments.map(c => renderComment(c, false));
+                        );
+                      };
+                      return flattenComments(comments).map(c => renderComment(c));
                     })()}
                   </div>
                   <div className="p-4 bg-background border-t border-border shrink-0">
@@ -635,6 +677,17 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Report Modal */}
+          {reportTarget && (
+            <ReportModal 
+              isOpen={true} 
+              onClose={() => setReportTarget(null)} 
+              targetName={reportTarget.name}
+              targetType={reportTarget.type}
+              targetId={reportTarget.id}
+            />
+          )}
 
         </motion.div>
       </div>

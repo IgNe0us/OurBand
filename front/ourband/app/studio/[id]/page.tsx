@@ -7,9 +7,10 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
-import { getStudioApi, deleteStudioApi, reportStudioApi, type StudioData } from "@/api/studio/studioService";
+import { getStudioApi, deleteStudioApi, type StudioData } from "@/api/studio/studioService";
 import { getUserInfoApi } from "@/api/account/userService";
 import { RegisterStudioModal } from "@/components/studio/RegisterStudioModal";
+import { ReportModal } from "@/components/common/ReportModal";
 import toast from "react-hot-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -25,8 +26,7 @@ export default function StudioIdDynamicPage() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const [reportReason, setReportReason] = useState("");
+  const [reportTarget, setReportTarget] = useState<{ type: string, id: string | number, name: string } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
@@ -150,7 +150,7 @@ export default function StudioIdDynamicPage() {
             ) : (
               !studio.isExternal && (
                 <button 
-                  onClick={() => setIsReportModalOpen(true)}
+                  onClick={() => setReportTarget({ type: 'STUDIO', id: studio.id, name: '합주실' })}
                   className="p-2 text-slate-400 hover:text-rose-500 transition-colors bg-background rounded-lg border border-border flex items-center gap-1 text-xs font-bold"
                 >
                   <AlertTriangle size={14} /> 신고
@@ -400,58 +400,15 @@ export default function StudioIdDynamicPage() {
 
       {/* Sticky Bottom Actions */}
 
-      {/* Report Modal */}
-      <AnimatePresence>
-        {isReportModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-secondary w-full max-w-sm rounded-[2rem] border border-border shadow-2xl p-6"
-            >
-              <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
-                <AlertTriangle className="text-rose-500" />
-                합주실 신고하기
-              </h3>
-              <p className="text-xs text-slate-400 mb-4">
-                허위 정보, 부적절한 이미지, 또는 운영되지 않는 합주실인 경우 신고해주세요.
-              </p>
-              <textarea 
-                value={reportReason}
-                onChange={(e) => setReportReason(e.target.value)}
-                placeholder="신고 사유를 상세히 적어주세요."
-                rows={4}
-                className="w-full bg-background border border-border rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-rose-500 transition-all resize-none mb-4"
-              />
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setIsReportModalOpen(false)}
-                  className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition"
-                >
-                  취소
-                </button>
-                <button 
-                  onClick={async () => {
-                    if (!reportReason.trim()) return toast.error('신고 사유를 입력해주세요.');
-                    try {
-                      await reportStudioApi(studio.id, reportReason);
-                      toast.success('신고가 접수되었습니다.');
-                      setIsReportModalOpen(false);
-                      setReportReason("");
-                    } catch (err) {
-                      toast.error('신고 접수에 실패했습니다.');
-                    }
-                  }}
-                  className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-500 transition"
-                >
-                  신고 접수
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {reportTarget && (
+        <ReportModal 
+          isOpen={true} 
+          onClose={() => setReportTarget(null)} 
+          targetName={reportTarget.name}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+        />
+      )}
 
       {/* Edit Studio Modal */}
       {isEditModalOpen && studio && (

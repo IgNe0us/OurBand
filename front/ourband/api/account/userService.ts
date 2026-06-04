@@ -10,6 +10,42 @@ export type UserApiData = {
 };
 
 /**
+ * 회원가입/비밀번호 찾기 - 이메일 인증번호 발송 API
+ */
+export const sendAuthCodeApi = async (email: string, captchaToken: string, type: string = "register") => {
+    const response = await apiClient.post<any>('/users/send-auth-code', { email, captchaToken, type });
+    return response.data;
+};
+
+/**
+ * 아이디(이메일) 찾기 - 안내 메일 발송 API
+ */
+export const findIdSendEmailApi = async (nickname: string, captchaToken: string) => {
+    const response = await apiClient.post<any>('/users/find-id-send-email', { nickname, captchaToken });
+    return response.data;
+};
+
+/**
+ * 비밀번호 재설정 API
+ */
+export const resetPasswordApi = async (email: string, code: string, newPassword: string) => {
+    const response = await apiClient.post<any>('/users/reset-password', { email, code, newPassword });
+    return response.data;
+};
+export const verifyAuthCodeApi = async (email: string, code: string) => {
+    const response = await apiClient.post<any>('/users/verify-auth-code', { email, code });
+    return response.data;
+};
+
+/**
+ * 닉네임 중복 확인 API
+ */
+export const checkNicknameApi = async (nickname: string) => {
+    const response = await apiClient.get<any>(`/users/check-nickname?nickname=${encodeURIComponent(nickname)}`);
+    return response.data;
+};
+
+/**
  * 회원가입 API 호출
  */
 export const registerUserApi = async (data: UserApiData) => {

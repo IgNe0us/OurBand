@@ -39,9 +39,14 @@ export function GlobalNotificationListener() {
             return;
         }
         
-        // Prevent reconnecting if token hasn't changed
-        if (activeTokenRef.current === token && eventSourceRef.current) return;
-        if (eventSourceRef.current) eventSourceRef.current.close();
+        // Prevent reconnecting if token hasn't changed AND the connection is still open
+        if (activeTokenRef.current === token && eventSourceRef.current && eventSourceRef.current.readyState !== EventSource.CLOSED) {
+            return;
+        }
+        
+        if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+        }
 
         activeTokenRef.current = token;
 
@@ -102,8 +107,8 @@ export function GlobalNotificationListener() {
 
         eventSource.onerror = (error) => {
             console.error("Notification SSE Error", error);
-            eventSource.close();
-            // Retry logic could be added here
+            // eventSource.close()를 호출하면 브라우저의 자동 재연결이 차단되므로 제거합니다.
+            // 대신 EventSource 객체의 readyState를 통해 상태를 추적합니다.
         };
 
       } catch (err) {

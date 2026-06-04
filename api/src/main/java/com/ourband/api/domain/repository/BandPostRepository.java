@@ -7,9 +7,9 @@ import java.util.List;
 
 @Repository
 public interface BandPostRepository extends JpaRepository<BandPost, Long> {
-    List<BandPost> findByBandIdAndBoardTypeOrderByCreatedAtDesc(Long bandId, String boardType);
-    List<BandPost> findByBandIdAndBoardTypeInOrderByCreatedAtDesc(Long bandId, List<String> boardTypes);
-    List<BandPost> findByBandIdOrderByCreatedAtDesc(Long bandId);
-    BandPost findFirstByBandIdAndMediaTypeOrderByCreatedAtDesc(Long bandId, String mediaType);
-    List<BandPost> findByCreatedAtAfter(java.time.LocalDateTime since);
+    List<BandPost> findByBandIdAndBoardTypeAndIsHiddenFalseOrderByCreatedAtDesc(Long bandId, String boardType);
+    List<BandPost> findByBandIdAndBoardTypeInAndIsHiddenFalseOrderByCreatedAtDesc(Long bandId, List<String> boardTypes);
+    List<BandPost> findByBandIdAndIsHiddenFalseOrderByCreatedAtDesc(Long bandId);
+    BandPost findFirstByBandIdAndMediaTypeAndIsHiddenFalseOrderByCreatedAtDesc(Long bandId, String mediaType);
+    List<BandPost> findByIsHiddenFalseAndCreatedAtAfter(java.time.LocalDateTime since);
 }

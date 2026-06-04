@@ -43,6 +43,14 @@ public class UserHistory {
     @Column(name = "share_count", nullable = false)
     private Integer shareCount = 0;
 
+    @Column(name = "is_hidden", nullable = false)
+    @Builder.Default
+    private boolean isHidden = false;
+
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private boolean isDeleted = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -97,5 +105,13 @@ public class UserHistory {
      */
     public void increaseViewCount() {
         this.viewCount = (this.viewCount == null) ? 1 : this.viewCount + 1;
+    }
+
+    public void setHidden(boolean hidden) {
+        this.isHidden = hidden;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.isDeleted = deleted;
     }
 }

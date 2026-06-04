@@ -235,7 +235,7 @@ public class BandService {
     public List<BandPostResponseDTO> getBandPosts(Long bandId, String boardType) {
         List<BandPost> posts;
         if (boardType == null || boardType.trim().isEmpty() || boardType.equalsIgnoreCase("전체")) {
-            posts = bandPostRepository.findByBandIdOrderByCreatedAtDesc(bandId);
+            posts = bandPostRepository.findByBandIdAndIsHiddenFalseOrderByCreatedAtDesc(bandId);
         } else {
             String upper = boardType.toUpperCase();
             List<String> types = new java.util.ArrayList<>();
@@ -245,7 +245,7 @@ public class BandService {
             if (upper.equals("SCHEDULE")) { types.add("합주 일정"); types.add("일정"); }
             if (upper.equals("REHEARSAL")) { types.add("합주"); types.add("합주 영상"); }
             
-            posts = bandPostRepository.findByBandIdAndBoardTypeInOrderByCreatedAtDesc(bandId, types);
+            posts = bandPostRepository.findByBandIdAndBoardTypeInAndIsHiddenFalseOrderByCreatedAtDesc(bandId, types);
         }
 
         List<BandMember> members = bandMemberRepository.findByBandId(bandId);
@@ -293,10 +293,10 @@ public class BandService {
                     .authorRole(authorRole)
                     .boardType(post.getBoardType())
                     .category(post.getCategory())
-                    .title(post.getTitle())
-                    .content(post.getContent())
-                    .mediaUrl(post.getMediaUrl())
-                    .mediaType(post.getMediaType())
+                    .title(post.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (post.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : post.getTitle()))
+                    .content(post.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (post.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : post.getContent()))
+                    .mediaUrl((post.isDeleted() || post.isHidden()) ? null : post.getMediaUrl())
+                    .mediaType((post.isDeleted() || post.isHidden()) ? null : post.getMediaType())
                     .scheduleDate(post.getScheduleDate())
                     .scheduleDetails(post.getScheduleDetails())
                     .createdAt(post.getCreatedAt())
@@ -316,6 +316,9 @@ public class BandService {
     public BandPostResponseDTO getBandPost(Long postId, Long currentUserId) {
         BandPost post = bandPostRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 게시글입니다."));
+        if (post.isHidden() || post.isDeleted()) {
+            throw new com.ourband.api.global.exception.ContentHiddenException("관리자에 의해 숨겨진 게시글입니다.");
+        }
 
         List<BandMember> members = bandMemberRepository.findByBandId(post.getBandId());
         Long leaderUserId = null;
@@ -355,10 +358,22 @@ public class BandService {
                     bandPostLikeRepository.existsByPostIdAndUserId(postId, currentUserId));
         }
         
-        List<com.ourband.api.domain.model.BandPostComment> topLevelComments = bandPostCommentRepository.findByPostIdAndParentIdIsNullOrderByCreatedAtAsc(postId);
-        List<BandPostCommentResponseDTO> comments = topLevelComments.stream()
-                .map(this::mapCommentToDTO)
-                .toList();
+        List<com.ourband.api.domain.model.BandPostComment> allComments = bandPostCommentRepository.findByPostIdOrderByCreatedAtAsc(postId);
+        Map<Long, BandPostCommentResponseDTO> dtoMap = allComments.stream()
+                .collect(Collectors.toMap(com.ourband.api.domain.model.BandPostComment::getId, this::mapCommentToDTO));
+        
+        List<BandPostCommentResponseDTO> comments = new ArrayList<>();
+        for (com.ourband.api.domain.model.BandPostComment c : allComments) {
+            BandPostCommentResponseDTO dto = dtoMap.get(c.getId());
+            if (c.getParentId() == null) {
+                comments.add(dto);
+            } else {
+                BandPostCommentResponseDTO parentDto = dtoMap.get(c.getParentId());
+                if (parentDto != null) {
+                    parentDto.getReplies().add(dto);
+                }
+            }
+        }
 
         // 투표 조회 - DB에 poll_id가 votes에 없으므로 option을 통해 조회
         PollResponseDTO pollResponse = null;
@@ -407,10 +422,10 @@ public class BandService {
                 .authorRole(authorRole)
                 .boardType(post.getBoardType())
                 .category(post.getCategory())
-                .title(post.getTitle())
-                .content(post.getContent())
-                .mediaUrl(post.getMediaUrl())
-                .mediaType(post.getMediaType())
+                .title(post.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (post.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : post.getTitle()))
+                .content(post.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (post.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : post.getContent()))
+                .mediaUrl((post.isDeleted() || post.isHidden()) ? null : post.getMediaUrl())
+                .mediaType((post.isDeleted() || post.isHidden()) ? null : post.getMediaType())
                 .scheduleDate(post.getScheduleDate())
                 .scheduleDetails(post.getScheduleDetails())
                 .createdAt(post.getCreatedAt())
@@ -495,10 +510,10 @@ public class BandService {
                 .authorRole(authorRole)
                 .boardType(savedPost.getBoardType())
                 .category(savedPost.getCategory())
-                .title(savedPost.getTitle())
-                .content(savedPost.getContent())
-                .mediaUrl(savedPost.getMediaUrl())
-                .mediaType(savedPost.getMediaType())
+                .title(savedPost.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (savedPost.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : savedPost.getTitle()))
+                .content(savedPost.isDeleted() ? "관리자에 의해 삭제된 게시글입니다." : (savedPost.isHidden() ? "관리자에 의해 숨김처리된 게시글 입니다." : savedPost.getContent()))
+                .mediaUrl((savedPost.isDeleted() || savedPost.isHidden()) ? null : savedPost.getMediaUrl())
+                .mediaType((savedPost.isDeleted() || savedPost.isHidden()) ? null : savedPost.getMediaType())
                 .scheduleDate(savedPost.getScheduleDate())
                 .scheduleDetails(savedPost.getScheduleDetails())
                 .createdAt(savedPost.getCreatedAt())
@@ -738,7 +753,7 @@ public class BandService {
     }
 
     /**
-     * 댓글 → DTO 변환 헬퍼 (대댓글 재귀 포함)
+     * 댓글 → DTO 변환 헬퍼
      */
     private BandPostCommentResponseDTO mapCommentToDTO(com.ourband.api.domain.model.BandPostComment c) {
         User cAuthor = userRepository.findById(c.getUserId()).orElse(null);
@@ -751,22 +766,17 @@ public class BandService {
             }
         }
 
-        List<com.ourband.api.domain.model.BandPostComment> replyEntities = bandPostCommentRepository.findByParentIdOrderByCreatedAtAsc(c.getId());
-        List<BandPostCommentResponseDTO> replies = replyEntities.stream()
-                .map(this::mapCommentToDTO)
-                .toList();
-
         return BandPostCommentResponseDTO.builder()
                 .id(c.getId())
                 .postId(c.getPostId())
                 .authorId(c.getUserId())
                 .authorName(cAuthorName)
                 .authorProfileImageUrl(cProfileImageUrl)
-                .content(c.getContent())
+                .content(c.isDeleted() ? "관리자에 의해 삭제 처리된 댓글입니다." : (c.isHidden() ? "관리자에 의해 숨김 처리 된 댓글입니다." : c.getContent()))
                 .createdAt(c.getCreatedAt())
                 .updatedAt(c.getUpdatedAt())
                 .parentId(c.getParentId())
-                .replies(replies)
+                .replies(new ArrayList<>())
                 .build();
     }
     /**
@@ -1032,7 +1042,7 @@ public class BandService {
             boolean isFollowed = currentUserId != null && finalFollowedIds.contains(band.getId());
             long followerCount = bandFollowRepository.countByBandId(band.getId());
 
-            com.ourband.api.domain.model.BandPost latestVideoPost = bandPostRepository.findFirstByBandIdAndMediaTypeOrderByCreatedAtDesc(band.getId(), "VIDEO");
+            com.ourband.api.domain.model.BandPost latestVideoPost = bandPostRepository.findFirstByBandIdAndMediaTypeAndIsHiddenFalseOrderByCreatedAtDesc(band.getId(), "VIDEO");
             String latestVideoUrl = latestVideoPost != null ? latestVideoPost.getMediaUrl() : null;
 
             // Find leader (minimum ID member with non-null userId)
@@ -1158,7 +1168,7 @@ public class BandService {
 
         // 고아 방지를 위해 수동 삭제 (실제 서비스에서는 상태 플래그 변경이 더 권장됨)
         // 1. 밴드 관련 포스트 삭제 (댓글, 좋아요 등은 cascade 또는 별도 처리가 필요할 수 있으나 생략)
-        bandPostRepository.findByBandIdOrderByCreatedAtDesc(bandId).forEach(post -> {
+        bandPostRepository.findByBandIdAndIsHiddenFalseOrderByCreatedAtDesc(bandId).forEach(post -> {
             bandPostCommentRepository.deleteAllByPostId(post.getId());
             bandPostLikeRepository.deleteAllByPostId(post.getId());
             bandPostRepository.delete(post);
