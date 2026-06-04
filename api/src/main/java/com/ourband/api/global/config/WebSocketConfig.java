@@ -29,7 +29,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws-chat")
+        registry.addEndpoint("/api/ws-chat")
                 .setAllowedOriginPatterns("*")
                 .addInterceptors(handshakeInterceptor)
                 .withSockJS(); // 브라우저가 WebSocket을 지원하지 않을 경우 대체 옵션 제공

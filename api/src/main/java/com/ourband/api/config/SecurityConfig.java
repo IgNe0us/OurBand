@@ -64,7 +64,7 @@ public class SecurityConfig {
                     "/api/v1/public/**",
                     "/api/v1/uploads",
                     "/uploads/**",
-                    "/ws-chat/**",
+                    "/api/ws-chat/**",
                     "/error"
                 ).permitAll()
                 // RBAC for Admin routes

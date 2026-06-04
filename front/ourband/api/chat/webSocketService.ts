@@ -2,12 +2,14 @@ import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import Cookies from 'js-cookie';
 
-const WS_URL = typeof window !== 'undefined' 
-  ? `http://${window.location.hostname}:8082/ws-chat` 
-  : 'http://localhost:8082/ws-chat';
-const BROKER_URL = typeof window !== 'undefined' 
-  ? `ws://${window.location.hostname}:8082/ws-chat/websocket` 
-  : 'ws://localhost:8082/ws-chat/websocket';
+const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+const WS_PROTOCOL = isSecure ? 'https:' : 'http:';
+const WSS_PROTOCOL = isSecure ? 'wss:' : 'ws:';
+const HOST = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const PORT = typeof window !== 'undefined' && window.location.port ? `:${window.location.port}` : (isSecure ? '' : ':8082');
+
+const WS_URL = `${WS_PROTOCOL}//${HOST}${PORT}/api/ws-chat`;
+const BROKER_URL = `${WSS_PROTOCOL}//${HOST}${PORT}/api/ws-chat/websocket`;
 
 class WebSocketService {
   private client: Client | null = null;
