@@ -238,7 +238,7 @@ public class UserController {
             
             ResponseCookie cookie = ResponseCookie.from("access_token", accessToken)
                 .httpOnly(false)
-                .secure(false) // 개발환경 false
+                .secure(true) // 운영환경 true
                 .path("/")
                 .maxAge(60 * 60) // 1시간
                 .sameSite("Lax")
@@ -247,7 +247,7 @@ public class UserController {
             String refreshToken = jwtUtil.generateRefreshToken(user.getUserId());
             ResponseCookie refreshCookie = ResponseCookie.from("refresh_token", refreshToken)
                 .httpOnly(true)
-                .secure(false) // 개발환경 false
+                .secure(true) // 운영환경 true
                 .path("/")
                 .maxAge(60 * 60 * 24 * 7) // 7일
                 .sameSite("Lax")
@@ -298,14 +298,14 @@ public class UserController {
 
         ResponseCookie deleteCookie = ResponseCookie.from("access_token", "")
                 .httpOnly(false)
-                .secure(false)
+                .secure(true)
                 .path("/")
                 .maxAge(0)
                 .build();
 
         ResponseCookie deleteRefreshCookie = ResponseCookie.from("refresh_token", "")
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/")
                 .maxAge(0)
                 .build();
@@ -340,7 +340,7 @@ public class UserController {
 
             ResponseCookie cookie = ResponseCookie.from("access_token", newAccessToken)
                 .httpOnly(false)
-                .secure(false)
+                .secure(true)
                 .path("/")
                 .maxAge(60 * 60)
                 .sameSite("Lax")
@@ -348,7 +348,7 @@ public class UserController {
 
             ResponseCookie refreshCookie = ResponseCookie.from("refresh_token", newRefreshToken)
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/")
                 .maxAge(60 * 60 * 24 * 7)
                 .sameSite("Lax")
