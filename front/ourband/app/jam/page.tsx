@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "motion/react";
 
 import { searchJamPostsApi, createJamPostApi, toggleJamLikeApi, getJamCommentsApi, createJamCommentApi, incrementJamShareApi, type JamPostData, updateJamCommentApi, deleteJamCommentApi, getJamPostApi } from "@/api/jam/jamService";
 import { ReportModal } from "@/components/common/ReportModal";
+import { ExpandableComment } from "@/components/common/ExpandableComment";
 import { getUserInfoApi, toggleFollowApi } from "@/api/account/userService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
 import { useUserProfile } from "@/store/userProfileContext";
@@ -958,7 +959,7 @@ export default function JamPage() {
                                 </div>
                               </div>
                           ) : (
-                              <p className="text-sm text-white break-all">{c.content}</p>
+                              <ExpandableComment content={c.content} className="text-sm text-white" lines={4} />
                           )}
                         </div>
                       </div>

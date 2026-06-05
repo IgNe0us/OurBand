@@ -10,6 +10,7 @@ import { apiClient } from "@/api/baseApi";
 import { useUserProfile } from "@/store/userProfileContext";
 import { toggleJamLikeApi, getJamCommentsApi, createJamCommentApi, updateJamCommentApi, deleteJamCommentApi, incrementJamShareApi } from "@/api/jam/jamService";
 import { ReportModal } from "@/components/common/ReportModal";
+import { ExpandableComment } from "@/components/common/ExpandableComment";
 
 export type PopularJamVideo = VideoPost & { 
   likes?: number; 
@@ -626,7 +627,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
                                 
                               </div>
                             </div>
-                            <p className="text-sm text-white break-all">{c.text}</p>
+                            <ExpandableComment content={c.text} className="text-sm text-white" lines={4} />
                             
                             {/* 대댓글 렌더링 부분은 평탄화 처리로 삭제됨 */}
                           </div>

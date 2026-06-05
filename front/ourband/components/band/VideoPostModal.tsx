@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { getUserInfoApi } from '@/api/account/userService';
 import { getBandPostApi, toggleLikeApi, createBandPostCommentApi, updateCommentApi, deleteCommentApi } from '@/api/band/bandService';
 import { useConfirm } from "@/hooks/useConfirm";
+import { ExpandableComment } from "@/components/common/ExpandableComment";
 export type VideoPost = {
   id: string | number;
   title: string;
@@ -304,7 +305,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
               </div>
             </div>
           ) : (
-            <p className="text-sm text-slate-300 mt-1 whitespace-pre-wrap">{c.content}</p>
+            <ExpandableComment content={c.content} className="text-sm text-slate-300 mt-1" lines={4} />
           )}
 
           {isReplying && (

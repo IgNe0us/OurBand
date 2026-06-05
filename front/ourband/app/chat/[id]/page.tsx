@@ -244,7 +244,7 @@ export default function ChatIdDynamicPage() {
               <div className="flex items-end gap-2 max-w-[80%]">
                 {isMe && <span className="text-[10px] text-slate-500 mb-1 shrink-0">{timeStr}</span>}
                 <div className={cn(
-                  "px-5 py-3 rounded-2xl text-sm shadow-md whitespace-pre-wrap",
+                  "px-5 py-3 rounded-2xl text-sm shadow-md whitespace-pre-wrap break-all",
                   isMe 
                     ? "bg-primary text-white rounded-br-sm" 
                     : "bg-secondary border border-border text-slate-200 rounded-bl-sm"

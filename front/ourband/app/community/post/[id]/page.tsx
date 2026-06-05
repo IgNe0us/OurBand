@@ -451,7 +451,7 @@ export default function CommunityPostDetailPage() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-slate-300 mt-1 whitespace-pre-wrap">{c.content}</p>
+            <p className="text-sm text-slate-300 mt-1 whitespace-pre-wrap break-all">{c.content}</p>
           )}
 
           {/* 답글 입력 */}
