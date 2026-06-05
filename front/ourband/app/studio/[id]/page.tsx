@@ -341,7 +341,7 @@ export default function StudioIdDynamicPage() {
               </a>
             ) : (
               <button 
-                onClick={() => toast.error("등록된 외부 예약 링크가 없습니다. 1:1 대화로 문의해주세요.")}
+                onClick={() => toast.error("등록된 외부 예약 링크가 없습니다.\n1:1 대화로 문의해주세요.")}
                 className="px-5 py-3.5 rounded-xl font-bold text-white text-sm transition-all flex items-center gap-2 bg-primary hover:bg-primary/90"
               >
                 예약 문의하기
