@@ -237,7 +237,7 @@ public class UserController {
             String accessToken = jwtUtil.generateToken(user.getUserId(), user.getEmail(), user.getType());
             
             ResponseCookie cookie = ResponseCookie.from("access_token", accessToken)
-                .httpOnly(false)
+                .httpOnly(true)
                 .secure(true) // 운영환경 true
                 .path("/")
                 .maxAge(60 * 60) // 1시간
@@ -297,7 +297,7 @@ public class UserController {
         }
 
         ResponseCookie deleteCookie = ResponseCookie.from("access_token", "")
-                .httpOnly(false)
+                .httpOnly(true)
                 .secure(true)
                 .path("/")
                 .maxAge(0)
@@ -339,7 +339,7 @@ public class UserController {
             String newRefreshToken = jwtUtil.generateRefreshToken(user.getUserId());
 
             ResponseCookie cookie = ResponseCookie.from("access_token", newAccessToken)
-                .httpOnly(false)
+                .httpOnly(true)
                 .secure(true)
                 .path("/")
                 .maxAge(60 * 60)

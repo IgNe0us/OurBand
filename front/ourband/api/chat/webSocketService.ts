@@ -1,15 +1,13 @@
 import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import Cookies from 'js-cookie';
 
 const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
 const WS_PROTOCOL = isSecure ? 'https:' : 'http:';
-const WSS_PROTOCOL = isSecure ? 'wss:' : 'ws:';
 const HOST = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-const PORT = typeof window !== 'undefined' && window.location.port ? `:${window.location.port}` : (isSecure ? '' : ':8082');
+// API 베이스 도메인/포트 맞춤 (개발환경: 8082)
+const PORT = typeof window !== 'undefined' && window.location.hostname.includes('ourband.o-r.kr') ? '' : ':8082';
 
 const WS_URL = `${WS_PROTOCOL}//${HOST}${PORT}/api/ws-chat`;
-const BROKER_URL = `${WSS_PROTOCOL}//${HOST}${PORT}/api/ws-chat/websocket`;
 
 class WebSocketService {
   private client: Client | null = null;
@@ -19,13 +17,11 @@ class WebSocketService {
   private onConnectCallbacks: (() => void)[] = [];
 
   connectGlobal(userId: number, onGlobalMessage: (msg: any) => void) {
-    if (this.client) return; // Already initialized
+    if (this.client) return;
 
-    const token = Cookies.get('access_token');
-    
+    // HttpOnly 쿠키 환경에서는 Native WebSocket 대신 SockJS + withCredentials를 사용하여 쿠키 자동 전송
     this.client = new Client({
-      brokerURL: BROKER_URL, // Use native WebSocket directly
-      ...(token ? { connectHeaders: { Authorization: `Bearer ${token}` } } : {}),
+      webSocketFactory: () => new SockJS(WS_URL, null, { withCredentials: true }),
       debug: (str) => {
         // console.log("STOMP: " + str);
       },

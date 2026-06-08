@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { getBandProfileApi, updateBandProfileApi, getBandPostsApi, getBandPostApi, createBandPostApi, updateBandPostApi, deleteBandPostApi, type BandPostData, getBandApplicationsApi, acceptApplicationApi, rejectApplicationApi, type BandApplicationData, leaveBandApi } from "@/api/band/bandService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { Clock, CheckCircle2, XCircle, X } from "lucide-react";
 
 const getFirstImageFromHtml = (htmlString: string) => {
@@ -513,7 +514,7 @@ export default function BandIdDynamicBoardPage() {
                     <div className="p-5 text-left flex flex-col flex-1">
                       <div className="text-xs font-bold text-primary mb-2">{post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ""}</div>
                       <h3 className="text-lg font-bold text-white mb-2 line-clamp-1 group-hover:text-primary transition-colors">{post.title}</h3>
-                      <p className="text-sm text-slate-400 line-clamp-2" dangerouslySetInnerHTML={{ __html: post.content }} />
+                      <p className="text-sm text-slate-400 line-clamp-2" dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content) }} />
                       <div className="mt-auto pt-4 flex items-center justify-between text-xs font-bold text-slate-500 border-t border-border/50">
                         <span>{post.authorName} ({post.authorRole})</span>
                         {(isLeader || post.authorId === currentUserId) && (
@@ -657,7 +658,7 @@ export default function BandIdDynamicBoardPage() {
                         </div>
                       </div>
                       <h3 className="text-lg font-bold text-white mb-2 group-hover:text-primary transition-colors pr-6">{post.title}</h3>
-                      <p className="text-sm text-slate-400 line-clamp-3 mb-4" dangerouslySetInnerHTML={{ __html: post.content }} />
+                      <p className="text-sm text-slate-400 line-clamp-3 mb-4" dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content) }} />
                       
                       {(() => {
                         const previewImage = post.mediaUrl || getFirstImageFromHtml(post.content);
@@ -847,7 +848,7 @@ export default function BandIdDynamicBoardPage() {
                         </div>
                       </div>
                       <h3 className="text-lg font-bold text-white mb-2 group-hover:text-primary transition-colors pr-6">{post.title}</h3>
-                      <p className="text-sm text-slate-400 mb-4" dangerouslySetInnerHTML={{ __html: post.content }} />
+                      <p className="text-sm text-slate-400 mb-4" dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content) }} />
                       
                       {(() => {
                         const previewImage = post.mediaUrl || getFirstImageFromHtml(post.content);

@@ -31,16 +31,9 @@ export function GlobalNotificationListener() {
           setUnreadCount(count);
         }
 
-        // 3. Connect SSE
-        const token = document.cookie.replace(/(?:(?:^|.*;\s*)access_token\s*\=\s*([^;]*).*$)|^.*$/, "$1");
-        
-        if (!token) {
-            console.error("SSE: No token found in cookies");
-            return;
-        }
-        
-        // Prevent reconnecting if token hasn't changed AND the connection is still open
-        if (activeTokenRef.current === token && eventSourceRef.current && eventSourceRef.current.readyState !== EventSource.CLOSED) {
+        // 3. Connect SSE (HttpOnly 쿠키는 브라우저가 자동 전송하므로 수동 토큰 추출 불필요)
+        // 이미 연결된 SSE가 살아있으면 재연결하지 않음
+        if (eventSourceRef.current && eventSourceRef.current.readyState !== EventSource.CLOSED) {
             return;
         }
         
@@ -48,9 +41,7 @@ export function GlobalNotificationListener() {
             eventSourceRef.current.close();
         }
 
-        activeTokenRef.current = token;
-
-        const url = `${getNotificationSubscribeUrl()}?token=${token}`; 
+        const url = getNotificationSubscribeUrl();
         
         const eventSource = new EventSource(url, {
             withCredentials: true 

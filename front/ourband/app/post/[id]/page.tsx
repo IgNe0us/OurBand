@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, MessageSquare, ThumbsUp, User, Share2, AlertCircle, CheckCircle2, BarChart2, Reply, Edit3, Trash2, X, Check } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { sanitizeHtml } from '@/lib/sanitize';
 import { ReportModal } from '@/components/common/ReportModal';
 import { useUserProfile } from '@/store/userProfileContext';
 import { getUserInfoApi } from '@/api/account/userService';
@@ -587,7 +588,7 @@ export default function PostDetailPage() {
         
         <div 
           className="prose prose-invert max-w-none text-slate-300 text-base md:text-lg leading-loose whitespace-pre-wrap mb-12"
-          dangerouslySetInnerHTML={{ __html: post.content }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content) }}
         />
         
         {post.img && (

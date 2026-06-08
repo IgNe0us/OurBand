@@ -4,6 +4,7 @@ import { useUserProfile } from "@/store/userProfileContext";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { getUserInfoApi } from '@/api/account/userService';
 import { getBandPostApi, toggleLikeApi, createBandPostCommentApi, updateCommentApi, deleteCommentApi } from '@/api/band/bandService';
 import { useConfirm } from "@/hooks/useConfirm";
@@ -391,7 +392,7 @@ export function VideoPostModal({ isOpen, onClose, postId, bandId }: VideoPostMod
                   </div>
 
                   <div className="prose prose-invert max-w-none border-b border-border pb-8">
-                    <div className="text-slate-300 leading-relaxed whitespace-pre-wrap text-[15px]" dangerouslySetInnerHTML={{ __html: post.content }} />
+                    <div className="text-slate-300 leading-relaxed whitespace-pre-wrap text-[15px]" dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content) }} />
                   </div>
 
                   {/* Comments Section */}

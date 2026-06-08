@@ -49,6 +49,7 @@ public class SecurityConfig {
             //     .anyRequest().authenticated()
             // );
             .authorizeHttpRequests(auth -> auth
+                .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(
                     "/api/v1/users/login",
@@ -62,8 +63,6 @@ public class SecurityConfig {
                     "/api/v1/users/reset-password",
                     "/api/v1/settings/public",
                     "/api/v1/public/**",
-                    "/api/v1/uploads",
-                    "/uploads/**",
                     "/api/ws-chat/**",
                     "/error"
                 ).permitAll()
