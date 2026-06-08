@@ -17,6 +17,7 @@ import { uploadToCloudflare } from "@/lib/cloudflare";
 import { getUserInfoApi, toggleFavoriteMemberApi, getFavoriteMembersApi } from "@/api/account/userService";
 import { getMyBandsApi, getBandProfileApi, MyBandData } from "@/api/band/bandService";
 import { UserProfileModal } from "@/components/common/UserProfileModal";
+import { ConfirmModal } from "@/components/common/ConfirmModal";
 import toast from "react-hot-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -71,6 +72,7 @@ export default function MemberSeekingPage() {
   const [availablePositions, setAvailablePositions] = useState<string[]>([]);
   const [isLoadingPositions, setIsLoadingPositions] = useState(false);
   const [isTargetAlreadyMember, setIsTargetAlreadyMember] = useState(false);
+  const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
 
   useEffect(() => {
     const fetchPositions = async () => {
@@ -627,9 +629,28 @@ export default function MemberSeekingPage() {
                         </div>
                     )}
                   </div>
-                  <input type="file" accept="image/*,video/*" className="hidden" ref={fileInputRef} onChange={(e) => {
+                  <input type="file" accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" className="hidden" ref={fileInputRef} onChange={(e) => {
                       if (e.target.files && e.target.files.length > 0) {
-                          setMediaFile(e.target.files[0]);
+                          const file = e.target.files[0];
+                          const allowedExtensions = ['jpg', 'jpeg', 'gif', 'png', 'mp4', 'mov', 'webm', 'ogv', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'avi', 'mkv', 'wmv', 'asf'];
+                          const videoExtensions = ['mp4', 'mov', 'webm', 'ogv', 'avi', 'mkv', 'wmv', 'asf', 'webp'];
+                          const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                          if (!allowedExtensions.includes(ext)) {
+                              setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+                              e.target.value = '';
+                              return;
+                          }
+                          if (videoExtensions.includes(ext) && file.size > 40 * 1024 * 1024) {
+                              setAlertModal({isOpen: true, message: `동영상/움짤 파일은 40MB 이하만 가능합니다: ${file.name}`});
+                              e.target.value = '';
+                              return;
+                          }
+                          if (file.size > 50 * 1024 * 1024) {
+                              setAlertModal({isOpen: true, message: '총 파일 용량은 50MB를 초과할 수 없습니다.'});
+                              e.target.value = '';
+                              return;
+                          }
+                          setMediaFile(file);
                           setRemoveExistingMedia(false);
                       }
                   }} />
@@ -738,6 +759,16 @@ export default function MemberSeekingPage() {
         isOpen={selectedProfileId !== null} 
         onClose={() => setSelectedProfileId(null)} 
         userId={selectedProfileId!} 
+      />
+
+      <ConfirmModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({isOpen: false, message: ''})}
+        onConfirm={() => setAlertModal({isOpen: false, message: ''})}
+        title="알림"
+        message={alertModal.message}
+        confirmText="확인"
+        hideCancel={true}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, Building2, MapPin, Speaker, Image as ImageIcon, Plus, Trash2, Check, CheckSquare, Info, Link as LinkIcon, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "../common/ConfirmModal";
 import DaumPostcode from 'react-daum-postcode';
 import { createStudioApi, updateStudioApi } from "@/api/studio/studioService";
 import { useRouter } from "next/navigation";
@@ -54,6 +55,7 @@ export function RegisterStudioModal({ isOpen, onClose, initialData }: RegisterSt
   
   const [isPostcodeOpen, setIsPostcodeOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
 
   const toggleAmenity = (amenity: string) => {
     setAmenities(prev =>
@@ -85,9 +87,52 @@ export function RegisterStudioModal({ isOpen, onClose, initialData }: RegisterSt
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    
-    files.forEach(file => {
+    const selectedFiles = Array.from(e.target.files || []);
+    const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'gif', 'png', 'mp4', 'mov', 'webm', 'ogv', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'avi', 'mkv', 'wmv', 'asf'];
+    const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB
+    const MAX_VIDEO_SIZE = 40 * 1024 * 1024; // 40MB
+    const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'ogv', 'avi', 'mkv', 'wmv', 'asf', 'webp'];
+    const MAX_VIDEO_COUNT = 12;
+
+    const validFiles: File[] = [];
+    let totalSize = 0;
+    let videoCount = 0;
+
+    for (const file of selectedFiles) {
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+        e.target.value = '';
+        return;
+      }
+
+      const isVideo = VIDEO_EXTENSIONS.includes(ext);
+      if (isVideo) {
+        if (file.size > MAX_VIDEO_SIZE) {
+          setAlertModal({isOpen: true, message: `동영상/움짤 파일은 40MB 이하만 가능합니다: ${file.name}`});
+          e.target.value = '';
+          return;
+        }
+        videoCount++;
+      }
+
+      if (totalSize + file.size > MAX_TOTAL_SIZE) {
+        setAlertModal({isOpen: true, message: `총 파일 용량은 50MB를 초과할 수 없습니다.`});
+        e.target.value = '';
+        return;
+      }
+
+      if (videoCount > MAX_VIDEO_COUNT) {
+        setAlertModal({isOpen: true, message: `동영상/움짤은 최대 12개까지 첨부 가능합니다.`});
+        e.target.value = '';
+        return;
+      }
+
+      validFiles.push(file);
+      totalSize += file.size;
+    }
+
+    validFiles.forEach(file => {
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
@@ -138,7 +183,7 @@ export function RegisterStudioModal({ isOpen, onClose, initialData }: RegisterSt
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (rooms.length === 0 || rooms.some(r => !r.name)) {
-      alert("룸 이름을 정확히 입력해주세요.");
+      setAlertModal({isOpen: true, message: "룸 이름을 정확히 입력해주세요."});
       return;
     }
     
@@ -169,10 +214,10 @@ export function RegisterStudioModal({ isOpen, onClose, initialData }: RegisterSt
       
       if (initialData) {
         await updateStudioApi(initialData.id, payload);
-        alert("합주실 정보가 수정되었습니다.");
+        setAlertModal({isOpen: true, message: "합주실 정보가 수정되었습니다."});
       } else {
         await createStudioApi(payload);
-        alert("성공적으로 등록되었습니다.");
+        setAlertModal({isOpen: true, message: "성공적으로 등록되었습니다."});
       }
       
       onClose();
@@ -181,13 +226,14 @@ export function RegisterStudioModal({ isOpen, onClose, initialData }: RegisterSt
       
     } catch (error) {
       console.error(error);
-      alert(initialData ? "수정에 실패했습니다." : "등록에 실패했습니다.");
+      setAlertModal({isOpen: true, message: initialData ? "수정에 실패했습니다." : "등록에 실패했습니다."});
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6">
@@ -320,7 +366,7 @@ export function RegisterStudioModal({ isOpen, onClose, initialData }: RegisterSt
                     <label className="w-full bg-background border border-dashed border-border hover:border-primary/50 hover:bg-slate-800/50 rounded-xl py-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all">
                       <ImageIcon className="text-slate-500" size={24} />
                       <span className="text-sm font-medium text-slate-400">클릭하여 사진 첨부하기</span>
-                      <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
+                      <input type="file" accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" multiple onChange={handleImageChange} className="hidden" />
                     </label>
                     
                     {images.length > 0 && (
@@ -491,5 +537,15 @@ export function RegisterStudioModal({ isOpen, onClose, initialData }: RegisterSt
         </div>
       )}
     </AnimatePresence>
+    <ConfirmModal
+      isOpen={alertModal.isOpen}
+      onClose={() => setAlertModal({isOpen: false, message: ''})}
+      onConfirm={() => setAlertModal({isOpen: false, message: ''})}
+      title="알림"
+      message={alertModal.message}
+      confirmText="확인"
+      hideCancel={true}
+    />
+    </>
   );
 }

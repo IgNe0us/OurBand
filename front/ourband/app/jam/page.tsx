@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "motion/react";
 
 import { searchJamPostsApi, createJamPostApi, toggleJamLikeApi, getJamCommentsApi, createJamCommentApi, incrementJamShareApi, type JamPostData, updateJamCommentApi, deleteJamCommentApi, getJamPostApi } from "@/api/jam/jamService";
 import { ReportModal } from "@/components/common/ReportModal";
+import { ConfirmModal } from "@/components/common/ConfirmModal";
 import { ExpandableComment } from "@/components/common/ExpandableComment";
 import { getUserInfoApi, toggleFollowApi } from "@/api/account/userService";
 import { uploadToCloudflare } from "@/lib/cloudflare";
@@ -361,6 +362,7 @@ export default function JamPage() {
   const [likedMap, setLikedMap] = useState<Record<number, boolean>>({});
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
 
   const filteredVideos = useMemo(() => {
     if (activeTab === "FOLLOWING") {
@@ -575,6 +577,23 @@ export default function JamPage() {
   const handleDuetFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate file extension
+    const allowedExtensions = ['jpg', 'jpeg', 'gif', 'png', 'mp4', 'mov', 'webm', 'ogv', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'avi', 'mkv', 'wmv', 'asf'];
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!allowedExtensions.includes(fileExtension)) {
+      setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+      if (duetFileInputRef.current) duetFileInputRef.current.value = "";
+      return;
+    }
+
+    // Validate video/gif file size (40MB limit)
+    const videoExtensions = ['mp4', 'mov', 'webm', 'ogv', 'avi', 'mkv', 'wmv', 'asf', 'gif'];
+    if (videoExtensions.includes(fileExtension) && file.size > 40 * 1024 * 1024) {
+      setAlertModal({isOpen: true, message: `동영상/움짤 파일은 40MB 이하만 가능합니다: ${file.name}`});
+      if (duetFileInputRef.current) duetFileInputRef.current.value = "";
+      return;
+    }
 
     const tempVideo = document.createElement("video");
     tempVideo.preload = "metadata";
@@ -1218,7 +1237,7 @@ export default function JamPage() {
                   <input 
                     type="file" 
                     ref={duetFileInputRef} 
-                    accept="video/*" 
+                    accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" 
                     className="hidden" 
                     onChange={handleDuetFileUpload} 
                   />
@@ -1364,8 +1383,25 @@ export default function JamPage() {
                     <div className="relative">
                       <input 
                         type="file" 
-                        accept="video/*" 
-                        onChange={e => setNewJamFile(e.target.files?.[0] || null)} 
+                        accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" 
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const allowedExtensions = ['jpg', 'jpeg', 'gif', 'png', 'mp4', 'mov', 'webm', 'ogv', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'avi', 'mkv', 'wmv', 'asf'];
+                          const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+                          if (!allowedExtensions.includes(fileExtension)) {
+                            setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+                            e.target.value = '';
+                            return;
+                          }
+                          const videoExtensions = ['mp4', 'mov', 'webm', 'ogv', 'avi', 'mkv', 'wmv', 'asf', 'gif'];
+                          if (videoExtensions.includes(fileExtension) && file.size > 40 * 1024 * 1024) {
+                            setAlertModal({isOpen: true, message: `동영상/움짤 파일은 40MB 이하만 가능합니다: ${file.name}`});
+                            e.target.value = '';
+                            return;
+                          }
+                          setNewJamFile(file);
+                        }} 
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
                         id="jam-file-upload"
                       />
@@ -1426,6 +1462,15 @@ export default function JamPage() {
         )}
 
       </AnimatePresence>
+      <ConfirmModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({isOpen: false, message: ''})}
+        onConfirm={() => setAlertModal({isOpen: false, message: ''})}
+        title="알림"
+        message={alertModal.message}
+        confirmText="확인"
+        hideCancel={true}
+      />
     </div>
   );
 }

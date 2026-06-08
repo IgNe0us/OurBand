@@ -3,6 +3,7 @@ import { useContext, useEffect, useRef } from "react";
 import { AudioJamModal } from "@/components/jam/AudioJamModal";
 import { LayoutContext } from "@/components/layout/AppLayout";
 import { useUserProfile } from "@/store/userProfileContext";
+import { ConfirmModal } from "@/components/common/ConfirmModal";
 
 import React, { useState } from "react";
 import { Settings, Share, Music2, Edit3, Play, MapPin, CalendarDays, Zap, AtSign, Menu, X, LogOut, Bell, Shield, Users, Plus, Trash2, Check, UserMinus, GuitarIcon, Guitar, User, Heart } from "lucide-react";
@@ -59,6 +60,7 @@ interface ProfileData {
 
 export default function ProfilePage() {
   const { confirm } = useConfirm();
+  const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [instrument, setInstrument] = useState("");
   const [region, setRegion] = useState("");
@@ -112,6 +114,30 @@ export default function ProfilePage() {
   const handleHistoryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate file extension
+    const allowedExtensions = ['jpg', 'jpeg', 'gif', 'png', 'mp4', 'mov', 'webm', 'ogv', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'avi', 'mkv', 'wmv', 'asf'];
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!allowedExtensions.includes(fileExtension)) {
+      setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+      e.target.value = '';
+      return;
+    }
+
+    // Validate video/gif file size (40MB limit)
+    const videoExtensions = ['mp4', 'mov', 'webm', 'ogv', 'avi', 'mkv', 'wmv', 'asf', 'gif'];
+    if (videoExtensions.includes(fileExtension) && file.size > 40 * 1024 * 1024) {
+      setAlertModal({isOpen: true, message: `동영상/움짤 파일은 40MB 이하만 가능합니다: ${file.name}`});
+      e.target.value = '';
+      return;
+    }
+
+    // Validate total image size if you want (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      setAlertModal({isOpen: true, message: `총 파일 용량은 50MB를 초과할 수 없습니다.`});
+      e.target.value = '';
+      return;
+    }
 
     // 기존 미리보기 URL이 있다면 메모리 해제
     if (historyPreviewUrl) URL.revokeObjectURL(historyPreviewUrl);
@@ -190,6 +216,21 @@ export default function ProfilePage() {
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, type: "PROFILE" | "COVER") => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // 확장자 검증
+    const IMAGE_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'gif', 'png', 'webp', 'bmp', 'tif', 'tiff', 'heic'];
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!IMAGE_ALLOWED_EXTENSIONS.includes(ext)) {
+      setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      setAlertModal({isOpen: true, message: `총 파일 용량은 50MB를 초과할 수 없습니다.`});
+      e.target.value = '';
+      return;
+    }
 
     try {
       // 1. Cloudflare 업로드
@@ -473,7 +514,7 @@ export default function ProfilePage() {
           type="file" 
           ref={coverInputRef} 
           className="hidden" 
-          accept="image/*" 
+          accept=".jpg,.jpeg,.gif,.png,.webp,.bmp,.tif,.tiff,.heic" 
           onChange={(e) => handleImageChange(e, "COVER")} // "COVER" 타입 전달
         />
         
@@ -535,7 +576,7 @@ export default function ProfilePage() {
             <input 
               type="file" 
               ref={fileInputRef} 
-              className="hidden" accept="image/*" 
+              className="hidden" accept=".jpg,.jpeg,.gif,.png,.webp,.bmp,.tif,.tiff,.heic" 
               onChange={(e) => handleImageChange(e, "PROFILE")}
               />
           </div>
@@ -1063,7 +1104,7 @@ export default function ProfilePage() {
                   type="file" 
                   ref={historyFileInputRef} 
                   className="hidden" 
-                  accept="image/*,video/*" 
+                  accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" 
                   onChange={handleHistoryFileChange} 
                 />
                 <div
@@ -1281,6 +1322,16 @@ export default function ProfilePage() {
             } : h)
           } : null);
         }}
+      />
+
+      <ConfirmModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({isOpen: false, message: ''})}
+        onConfirm={() => setAlertModal({isOpen: false, message: ''})}
+        title="알림"
+        message={alertModal.message}
+        confirmText="확인"
+        hideCancel={true}
       />
     </div>
   );

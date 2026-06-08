@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { X, Camera, Save, Plus, Trash2, UserPlus, Loader2, AlertTriangle, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { ConfirmModal } from "../common/ConfirmModal";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { uploadToCloudflare } from "@/lib/cloudflare";
@@ -44,6 +45,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
   const [showDisbandConfirm, setShowDisbandConfirm] = useState(false);
   const [disbandConfirmText, setDisbandConfirmText] = useState("");
   const router = useRouter();
+  const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
   const [loc1, setLoc1] = useState("전국");
   const [loc2, setLoc2] = useState("전체");
 
@@ -90,13 +92,23 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const IMAGE_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'gif', 'png', 'webp', 'bmp', 'tif', 'tiff', 'heic'];
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!IMAGE_ALLOWED_EXTENSIONS.includes(ext)) {
+      setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setAlertModal({isOpen: true, message: `총 파일 용량은 50MB를 초과할 수 없습니다.`});
+      return;
+    }
     setIsUploadingLogo(true);
     try {
       const url = await uploadToCloudflare(file);
       setFormData((prev) => ({ ...prev, logoImage: url }));
     } catch (err) {
       console.error("Failed to upload logo:", err);
-      alert("로고 업로드에 실패했습니다. 다시 시도해 주세요.");
+      setAlertModal({isOpen: true, message: "로고 업로드에 실패했습니다. 다시 시도해 주세요."});
     } finally {
       setIsUploadingLogo(false);
     }
@@ -105,13 +117,23 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const IMAGE_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'gif', 'png', 'webp', 'bmp', 'tif', 'tiff', 'heic'];
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!IMAGE_ALLOWED_EXTENSIONS.includes(ext)) {
+      setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setAlertModal({isOpen: true, message: `총 파일 용량은 50MB를 초과할 수 없습니다.`});
+      return;
+    }
     setIsUploadingCover(true);
     try {
       const url = await uploadToCloudflare(file);
       setFormData((prev) => ({ ...prev, coverImage: url }));
     } catch (err) {
       console.error("Failed to upload cover image:", err);
-      alert("커버 이미지 업로드에 실패했습니다. 다시 시도해 주세요.");
+      setAlertModal({isOpen: true, message: "커버 이미지 업로드에 실패했습니다. 다시 시도해 주세요."});
     } finally {
       setIsUploadingCover(false);
     }
@@ -182,23 +204,24 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
 
   const handleDisbandBand = async () => {
     if (disbandConfirmText !== formData.name) {
-      alert("밴드 이름이 일치하지 않습니다.");
+      setAlertModal({isOpen: true, message: "밴드 이름이 일치하지 않습니다."});
       return;
     }
     
     try {
       await deleteBandApi(formData.id!);
-      alert("밴드가 성공적으로 해체되었습니다.");
+      setAlertModal({isOpen: true, message: "밴드가 성공적으로 해체되었습니다."});
       onClose();
       router.push('/bands');
     } catch (err: any) {
-      alert(err.response?.data?.message || "밴드 해체에 실패했습니다.");
+      setAlertModal({isOpen: true, message: err.response?.data?.message || "밴드 해체에 실패했습니다."});
     }
   };
 
   if (!isOpen) return null;
 
   return (
+    <>
     <AnimatePresence>
       <div 
         className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md"
@@ -248,7 +271,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                    type="file" 
                    ref={coverInputRef} 
                    onChange={handleCoverChange} 
-                   accept="image/*" 
+                   accept=".jpg,.jpeg,.gif,.png,.webp,.bmp,.tif,.tiff,.heic" 
                    className="hidden" 
                  />
               </div>
@@ -277,7 +300,7 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
                    type="file" 
                    ref={logoInputRef} 
                    onChange={handleLogoChange} 
-                   accept="image/*" 
+                   accept=".jpg,.jpeg,.gif,.png,.webp,.bmp,.tif,.tiff,.heic" 
                    className="hidden" 
                  />
               </div>
@@ -557,5 +580,15 @@ export function EditBandProfileModal({ isOpen, onClose, initialData, onSave }: E
         </motion.div>
       </div>
     </AnimatePresence>
+    <ConfirmModal
+      isOpen={alertModal.isOpen}
+      onClose={() => setAlertModal({isOpen: false, message: ''})}
+      onConfirm={() => setAlertModal({isOpen: false, message: ''})}
+      title="알림"
+      message={alertModal.message}
+      confirmText="확인"
+      hideCancel={true}
+    />
+    </>
   );
 }

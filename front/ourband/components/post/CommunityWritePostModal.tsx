@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { X, Image as ImageIcon, Palette, BarChart2, Plus, Trash2, Bold, Italic, Underline, ChevronDown, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "../common/ConfirmModal";
 
 interface CommunityWritePostModalProps {
   isOpen: boolean;
@@ -52,6 +53,7 @@ export function CommunityWritePostModal({ isOpen, onClose, defaultBoard = "자�
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isPartDropdownOpen, setIsPartDropdownOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const partDropdownRef = useRef<HTMLDivElement>(null);
@@ -132,9 +134,9 @@ export function CommunityWritePostModal({ isOpen, onClose, defaultBoard = "자�
   };
 
   const handlePublish = async () => {
-    if (!title.trim()) return alert("제목을 입력해주세요!");
+    if (!title.trim()) return setAlertModal({isOpen: true, message: "제목을 입력해주세요!"});
     const content = editorRef.current?.innerHTML || "";
-    if (!content.trim() || content === "<br>") return alert("내용을 입력해주세요!");
+    if (!content.trim() || content === "<br>") return setAlertModal({isOpen: true, message: "내용을 입력해주세요!"});
 
     setIsSubmitting(true);
     try {
@@ -157,15 +159,16 @@ export function CommunityWritePostModal({ isOpen, onClose, defaultBoard = "자�
       onClose();
     } catch (err) {
       console.error("Failed to publish post:", err);
-      alert("게시글 등록에 실패했습니다.");
+      setAlertModal({isOpen: true, message: "게시글 등록에 실패했습니다."});
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
+    <>
+      <AnimatePresence>
+        {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-6 bg-black/80 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, y: 50 }}
@@ -325,7 +328,7 @@ export function CommunityWritePostModal({ isOpen, onClose, defaultBoard = "자�
                   <button 
                     onClick={() => {
                       if (usePoll && initialData?.poll?.totalVotes > 0) {
-                        alert("이미 투표가 진행되어 투표를 삭제할 수 없습니다.");
+                        setAlertModal({isOpen: true, message: "이미 투표가 진행되어 투표를 삭제할 수 없습니다."});
                         return;
                       }
                       setUsePoll(!usePoll);
@@ -381,7 +384,54 @@ export function CommunityWritePostModal({ isOpen, onClose, defaultBoard = "자�
                   <button onClick={() => fileInputRef.current?.click()} className="bg-secondary border border-border hover:border-primary/50 px-4 py-2.5 rounded-lg text-sm font-bold text-slate-300 hover:text-white transition-all flex items-center gap-2 flex-shrink-0">
                     <ImageIcon size={16}/> 사진, 움짤, 동영상 등 파일 첨부
                   </button>
-                  <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" className="hidden" onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])} />
+                  <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.gif,.png,.mp4,.mov,.webm,.ogv,.webp,.bmp,.tif,.tiff,.heic,.avi,.mkv,.wmv,.asf" className="hidden" onChange={(e) => {
+                    if (!e.target.files) return;
+                    const selectedFiles = Array.from(e.target.files);
+                    const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'gif', 'png', 'mp4', 'mov', 'webm', 'ogv', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'avi', 'mkv', 'wmv', 'asf'];
+                    const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB
+                    const MAX_VIDEO_SIZE = 40 * 1024 * 1024; // 40MB
+                    const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'ogv', 'avi', 'mkv', 'wmv', 'asf', 'webp'];
+                    const MAX_VIDEO_COUNT = 12;
+
+                    const validFiles: File[] = [];
+                    let totalSize = 0;
+                    let videoCount = 0;
+
+                    for (const file of selectedFiles) {
+                      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+                        setAlertModal({isOpen: true, message: `지원하지 않는 파일 형식입니다: ${file.name}`});
+                        return;
+                      }
+
+                      const isVideo = VIDEO_EXTENSIONS.includes(ext);
+                      if (isVideo) {
+                        if (file.size > MAX_VIDEO_SIZE) {
+                          setAlertModal({isOpen: true, message: `동영상/움짤 파일은 40MB 이하만 가능합니다: ${file.name}`});
+                          return;
+                        }
+                        videoCount++;
+                      }
+
+                      if (totalSize + file.size > MAX_TOTAL_SIZE) {
+                        setAlertModal({isOpen: true, message: `총 파일 용량은 50MB를 초과할 수 없습니다.`});
+                        return;
+                      }
+
+                      if (videoCount > MAX_VIDEO_COUNT) {
+                        setAlertModal({isOpen: true, message: `동영상/움짤은 최대 12개까지 첨부 가능합니다.`});
+                        return;
+                      }
+
+                      validFiles.push(file);
+                      totalSize += file.size;
+                    }
+
+                    setFiles(validFiles);
+                    setRemoveMedia(true);
+                    setExistingMedia(null);
+                    e.target.value = '';
+                  }} />
                   <span className="text-sm font-bold text-slate-400 truncate w-full sm:w-auto">
                     {files.length > 0 ? <span className="text-primary">{files.length}개의 파일 선택됨 ({(files.reduce((acc, f) => acc + f.size, 0) / 1024 / 1024).toFixed(2)} MB)</span> : "선택된 파일 없음"}
                   </span>
@@ -444,6 +494,16 @@ export function CommunityWritePostModal({ isOpen, onClose, defaultBoard = "자�
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+      </AnimatePresence>
+      <ConfirmModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({isOpen: false, message: ''})}
+        onConfirm={() => setAlertModal({isOpen: false, message: ''})}
+        title="알림"
+        message={alertModal.message}
+        confirmText="확인"
+        hideCancel={true}
+      />
+    </>
   );
 }

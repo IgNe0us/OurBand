@@ -10,6 +10,7 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   isDestructive?: boolean;
+  hideCancel?: boolean;
 }
 
 export function ConfirmModal({
@@ -20,7 +21,8 @@ export function ConfirmModal({
   message,
   confirmText = "확인",
   cancelText = "취소",
-  isDestructive = false
+  isDestructive = false,
+  hideCancel = false
 }: ConfirmModalProps) {
   if (!isOpen) return null;
   return (
@@ -51,12 +53,14 @@ export function ConfirmModal({
             <p className="text-sm text-slate-300 mb-6">{message}</p>
             
             <div className="flex gap-3 w-full">
-              <button 
-                onClick={onClose}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold transition-colors"
-              >
-                {cancelText}
-              </button>
+              {!hideCancel && (
+                <button 
+                  onClick={onClose}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold transition-colors"
+                >
+                  {cancelText}
+                </button>
+              )}
               <button 
                 onClick={() => { onConfirm(); onClose(); }}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
