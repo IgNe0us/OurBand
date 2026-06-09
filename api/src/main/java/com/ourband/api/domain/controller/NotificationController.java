@@ -23,8 +23,12 @@ public class NotificationController {
     @GetMapping(value = "/subscribe", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter subscribe(
             @CookieValue(value = "access_token", required = false) String cookieToken,
-            @RequestParam(value = "token", required = false) String queryToken
+            @RequestParam(value = "token", required = false) String queryToken,
+            jakarta.servlet.http.HttpServletResponse response
     ) {
+        // Nginx 버퍼링 해제 (실시간 알림 지연 방지)
+        response.setHeader("X-Accel-Buffering", "no");
+        
         String token = cookieToken != null ? cookieToken : queryToken;
         if (token == null) {
             System.out.println("[NotificationController] Missing token in /subscribe");
