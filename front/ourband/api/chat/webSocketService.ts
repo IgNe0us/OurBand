@@ -21,7 +21,8 @@ class WebSocketService {
 
     // HttpOnly 쿠키 환경에서는 Native WebSocket 대신 SockJS + withCredentials를 사용하여 쿠키 자동 전송
     this.client = new Client({
-      webSocketFactory: () => new SockJS(WS_URL, null, { withCredentials: true }),
+      // @ts-ignore - sockjs-client 타입 정의에 withCredentials가 누락되어 있음
+    webSocketFactory: () => new SockJS(WS_URL, null, { withCredentials: true } as any),
       debug: (str) => {
         // console.log("STOMP: " + str);
       },
