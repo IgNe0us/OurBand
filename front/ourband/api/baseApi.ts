@@ -99,7 +99,7 @@ apiClient.interceptors.response.use(
                 // 리프레시 토큰마저 만료된 경우 (로그아웃 처리)
                 if (typeof window !== 'undefined') {
                     const path = window.location.pathname;
-                    const isPublicPage = path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/find-account');
+                    const isPublicPage = path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/find-account') || path.startsWith('/portfolio');
                     
                     if (!getIsRedirectingToMaintenance() && path !== '/maintenance' && !isPublicPage) {
                         window.location.href = '/login';
