@@ -12,9 +12,10 @@ export function proxy(request: NextRequest) {
   // 💡 수정된 부분: 로그인('/login') 또는 회원가입('/register'), 계정찾기('/find-account') 경로인지 확인
   const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/find-account');
   const isMaintenancePage = pathname.startsWith('/maintenance');
+  const isPublicPage = pathname.startsWith('/portfolio'); // 포트폴리오 페이지는 누구나 볼 수 있게 허용
 
-  // 3. 로그인이 안 되어 있는데, 인증 페이지나 점검 페이지가 아닌 곳에 접속하려 할 때 강제 이동
-  if (!isAuthenticated && !isAuthPage && !isMaintenancePage) {
+  // 3. 로그인이 안 되어 있는데, 허용된 페이지가 아닌 곳에 접속하려 할 때 강제 이동
+  if (!isAuthenticated && !isAuthPage && !isMaintenancePage && !isPublicPage) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 

@@ -55,9 +55,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isRegistPage = pathname?.startsWith('/register');
   const isFindAccountPage = pathname?.startsWith('/find-account');
   const isMaintenancePage = pathname?.startsWith('/maintenance');
+  const isPortfolioPage = pathname?.startsWith('/portfolio');
 
-  const isHideSidebar = isAdminPage || isLoginPage || isRegistPage || isFindAccountPage || isMaintenancePage;
-  const isHideListeners = isLoginPage || isRegistPage || isFindAccountPage || isMaintenancePage;
+  const isHideSidebar = isAdminPage || isLoginPage || isRegistPage || isFindAccountPage || isMaintenancePage || isPortfolioPage;
+  const isHideListeners = isLoginPage || isRegistPage || isFindAccountPage || isMaintenancePage || isPortfolioPage;
 
   const topNotice = publicSettings['global_notice'];
 
