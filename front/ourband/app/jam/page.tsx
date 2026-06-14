@@ -46,8 +46,20 @@ function JamVideoItem({
   const videoRef = useRef<HTMLVideoElement>(null);
   const parentVideoRef = useRef<HTMLVideoElement>(null);
   const [progress, setProgress] = useState(0);
-  const [masterVolume, setMasterVolume] = useState(100);
+  const [masterVolume, setMasterVolume] = useState(() => {
+    if (typeof window !== 'undefined') return Number(localStorage.getItem('ourband_jam_volume') || 100);
+    return 100;
+  });
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+
+  useEffect(() => {
+    const handleVolChange = () => {
+      const v = Number(localStorage.getItem('ourband_jam_volume') || 100);
+      if (masterVolume !== v) setMasterVolume(v);
+    };
+    window.addEventListener('volumeChange', handleVolChange);
+    return () => window.removeEventListener('volumeChange', handleVolChange);
+  }, [masterVolume]);
 
   const handleTimeUpdate = () => {
     if (videoRef.current && videoRef.current.duration) {
@@ -164,7 +176,7 @@ function JamVideoItem({
 
         {/* Top Right Volume Control */}
         <div className="absolute right-4 top-24 z-50 flex items-center group pointer-events-auto">
-          <div className="absolute right-12 w-28 h-10 bg-black/40 backdrop-blur-md rounded-full flex items-center px-3 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+          <div className="absolute right-8 w-28 h-10 pr-2 bg-black/40 backdrop-blur-md rounded-l-full flex items-center pl-3 border-y border-l border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
             <input 
               type="range" 
               min="0" max="100" 
@@ -172,6 +184,8 @@ function JamVideoItem({
               onChange={(e) => {
                 const v = Number(e.target.value);
                 setMasterVolume(v);
+                localStorage.setItem('ourband_jam_volume', v.toString());
+                window.dispatchEvent(new Event('volumeChange'));
                 if (videoRef.current) {
                   videoRef.current.muted = (v === 0);
                 }
@@ -189,6 +203,8 @@ function JamVideoItem({
               const isMuted = masterVolume === 0;
               const newVol = isMuted ? 100 : 0;
               setMasterVolume(newVol);
+              localStorage.setItem('ourband_jam_volume', newVol.toString());
+              window.dispatchEvent(new Event('volumeChange'));
               if (videoRef.current) videoRef.current.muted = !isMuted;
               if (parentVideoRef.current) parentVideoRef.current.muted = !isMuted;
             }}
@@ -358,6 +374,10 @@ export default function JamPage() {
   const [activeTab, setActiveTab] = useState<"FOLLOWING" | "RECOMMENDED">("RECOMMENDED");
 
   const [videos, setVideos] = useState<JamPostData[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const observerRef = useRef<HTMLDivElement>(null);
   const [playingId, setPlayingId] = useState<number | null>(null);
   const [likedMap, setLikedMap] = useState<Record<number, boolean>>({});
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
@@ -396,6 +416,8 @@ export default function JamPage() {
         const res = await searchJamPostsApi();
         const otherVideos = res.content.filter((v: JamPostData) => v.id !== Number(jamIdParam));
         initialVideos = [...initialVideos, ...otherVideos];
+        setHasMore(!res.last);
+        setPage(0);
         
         setVideos(initialVideos);
         
@@ -418,6 +440,48 @@ export default function JamPage() {
     
     fetchInitialData();
   }, [jamIdParam]);
+
+  const loadMore = async () => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await searchJamPostsApi(undefined, undefined, nextPage, 10);
+      const newVideos = res.content.filter((newV: JamPostData) => !videos.some(v => v.id === newV.id));
+      
+      if (newVideos.length > 0) {
+        setVideos(prev => [...prev, ...newVideos]);
+        const newLikedMap: Record<number, boolean> = { ...likedMap };
+        const newFollowingMap: Record<string, boolean> = { ...followingMap };
+        newVideos.forEach((v: JamPostData) => {
+          if (v.isLiked) newLikedMap[v.id] = true;
+          if (v.isFollowing && v.authorName) newFollowingMap[v.authorName] = true;
+        });
+        setLikedMap(newLikedMap);
+        setFollowingMap(newFollowingMap);
+      }
+      
+      setPage(nextPage);
+      setHasMore(!res.last);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+        loadMore();
+      }
+    }, { threshold: 0.1 });
+    
+    if (observerRef.current) {
+      observer.observe(observerRef.current);
+    }
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, page, videos, likedMap, followingMap]);
   
   // Modals state
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
@@ -879,6 +943,12 @@ export default function JamPage() {
           openUserProfile={openUserProfile}
         />
       ))}
+
+        {hasMore && (
+          <div ref={observerRef} className="w-full h-10 flex items-center justify-center text-white/50 text-sm pb-20">
+            {isLoadingMore ? "로딩 중..." : ""}
+          </div>
+        )}
 
       {/* Modals */}
       <AnimatePresence>

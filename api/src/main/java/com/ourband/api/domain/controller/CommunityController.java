@@ -38,7 +38,7 @@ public class CommunityController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Null message"));
         }
     }
 

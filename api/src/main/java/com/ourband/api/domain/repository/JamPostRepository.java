@@ -15,10 +15,12 @@ public interface JamPostRepository extends JpaRepository<JamPost, Long> {
     @Query("SELECT j FROM JamPost j WHERE j.isHidden = false AND " +
            "(:genre IS NULL OR :genre = '전체 장르' OR j.genre = :genre) AND " +
            "(:instrument IS NULL OR :instrument = '전체 악기' OR j.instrument = :instrument) " +
-           "ORDER BY j.createdAt DESC")
+           "ORDER BY j.createdAt DESC, j.id DESC")
     Page<JamPost> searchJamPosts(@Param("genre") String genre,
                                  @Param("instrument") String instrument,
                                  Pageable pageable);
 
     List<JamPost> findByIsHiddenFalseAndCreatedAtAfter(java.time.LocalDateTime since);
+    List<JamPost> findByIsHiddenFalse();
+    List<JamPost> findTop10ByIsHiddenFalseOrderByCreatedAtDesc();
 }

@@ -88,43 +88,65 @@ public class TrendService {
     public List<BandListResponseDTO> updateTrendingBands() {
         LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
 
-        // Fetch recent followers
+        // 1. 최근 7일 활동 데이터 (부스트용)
         List<BandFollow> recentFollows = bandFollowRepository.findByCreatedAtAfter(sevenDaysAgo);
-        Map<Long, Long> newFollowsByBand = recentFollows.stream()
+        Map<Long, Long> recentFollowsByBand = recentFollows.stream()
                 .collect(Collectors.groupingBy(BandFollow::getBandId, Collectors.counting()));
 
-        // Fetch recent posts to aggregate likes and comments
         List<BandPost> recentPosts = bandPostRepository.findByIsHiddenFalseAndCreatedAtAfter(sevenDaysAgo);
         Map<Long, Integer> recentLikesByBand = recentPosts.stream()
                 .collect(Collectors.groupingBy(BandPost::getBandId, Collectors.summingInt(p -> p.getLikeCount() != null ? p.getLikeCount() : 0)));
         Map<Long, Integer> recentCommentsByBand = recentPosts.stream()
                 .collect(Collectors.groupingBy(BandPost::getBandId, Collectors.summingInt(p -> p.getCommentCount() != null ? p.getCommentCount() : 0)));
 
-        // Get all bands
-        List<Bands> allBands = bandRepository.findAll();
+        // 2. 전체 게시물 데이터 (누적 점수용)
+        List<BandPost> allPosts = bandPostRepository.findByIsHiddenFalse();
+        Map<Long, Integer> totalLikesByBand = allPosts.stream()
+                .collect(Collectors.groupingBy(BandPost::getBandId, Collectors.summingInt(p -> p.getLikeCount() != null ? p.getLikeCount() : 0)));
+        Map<Long, Integer> totalCommentsByBand = allPosts.stream()
+                .collect(Collectors.groupingBy(BandPost::getBandId, Collectors.summingInt(p -> p.getCommentCount() != null ? p.getCommentCount() : 0)));
 
-        // Calculate scores
-        Map<Bands, Long> scores = new HashMap<>();
+        // 3. 전체 밴드 대상 점수 계산
+        List<Bands> allBands = bandRepository.findAll();
+        Map<Bands, Double> scores = new HashMap<>();
+
         for (Bands band : allBands) {
             Long bandId = band.getId();
-            long newFollows = newFollowsByBand.getOrDefault(bandId, 0L);
+
+            // 누적 점수: 전체 팔로워 + 전체 좋아요 + 전체 댓글 (절대 0이 되지 않음)
+            long totalFollowers = bandFollowRepository.countByBandId(bandId);
+            long totalLikes = totalLikesByBand.getOrDefault(bandId, 0);
+            long totalComments = totalCommentsByBand.getOrDefault(bandId, 0);
+            double baseScore = (totalFollowers * 3.0) + (totalLikes * 2.0) + (totalComments * 1.0);
+
+            // 최근 7일 부스트: 최근 활동에 3배 가중치
+            long recentNewFollows = recentFollowsByBand.getOrDefault(bandId, 0L);
             long recentLikes = recentLikesByBand.getOrDefault(bandId, 0);
             long recentComments = recentCommentsByBand.getOrDefault(bandId, 0);
+            double recentBoost = ((recentNewFollows * 10) + (recentLikes * 5) + (recentComments * 3)) * 3.0;
 
-            long score = (newFollows * 10) + (recentLikes * 5) + (recentComments * 3);
-            if (score > 0) {
-                scores.put(band, score);
+            double finalScore = baseScore + recentBoost;
+            if (finalScore > 0) {
+                scores.put(band, finalScore);
             }
         }
 
-        // Sort by score and take top 10
-        List<Bands> topBands = scores.entrySet().stream()
-                .sorted(Map.Entry.<Bands, Long>comparingByValue().reversed())
-                .limit(10)
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
+        List<Bands> topBands;
+        if (scores.isEmpty()) {
+            // Fallback: 점수가 있는 밴드가 없으면 최신 생성순 10개
+            log.info("No scored bands found, falling back to newest bands.");
+            topBands = allBands.stream()
+                    .sorted(Comparator.comparing(Bands::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                    .limit(10)
+                    .collect(Collectors.toList());
+        } else {
+            topBands = scores.entrySet().stream()
+                    .sorted(Map.Entry.<Bands, Double>comparingByValue().reversed())
+                    .limit(10)
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+        }
 
-        // Map to DTO
         List<BandListResponseDTO> dtos = topBands.stream()
                 .map(band -> mapBandToDTO(band))
                 .collect(Collectors.toList());
@@ -134,29 +156,36 @@ public class TrendService {
     }
 
     public List<JamPostResponseDTO> updateTrendingJams() {
-        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
-        List<JamPost> recentJams = jamPostRepository.findByIsHiddenFalseAndCreatedAtAfter(sevenDaysAgo);
+        // 전체 잼 대상 (7일 제한 제거 → 절대 사라지지 않음)
+        List<JamPost> allJams = jamPostRepository.findByIsHiddenFalse();
 
         Map<JamPost, Double> scores = new HashMap<>();
         LocalDateTime now = LocalDateTime.now();
 
-        for (JamPost jam : recentJams) {
+        for (JamPost jam : allJams) {
             double baseScore = (jam.getViewCount() * 1.0) + (jam.getLikeCount() * 5.0) + (jam.getCommentCount() * 10.0) + (jam.getShareCount() * 15.0);
             
-            // Time decay: (score) / (hours_passed + 2)^1.5
-            long hoursPassed = ChronoUnit.HOURS.between(jam.getCreatedAt(), now);
-            double decayedScore = baseScore / Math.pow(hoursPassed + 2, 1.5);
+            // 완만한 시간 감쇠: 일(day) 단위, 지수 0.8 → 오래된 인기 영상도 천천히 밀려남
+            long daysPassed = ChronoUnit.DAYS.between(jam.getCreatedAt(), now);
+            double decayedScore = baseScore / Math.pow(daysPassed + 1, 0.8);
             
             if (decayedScore > 0) {
                 scores.put(jam, decayedScore);
             }
         }
 
-        List<JamPost> topJams = scores.entrySet().stream()
-                .sorted(Map.Entry.<JamPost, Double>comparingByValue().reversed())
-                .limit(10)
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
+        List<JamPost> topJams;
+        if (scores.isEmpty()) {
+            // Fallback: 점수 있는 잼이 없으면 최신순 10개
+            log.info("No scored jams found, falling back to newest jams.");
+            topJams = jamPostRepository.findTop10ByIsHiddenFalseOrderByCreatedAtDesc();
+        } else {
+            topJams = scores.entrySet().stream()
+                    .sorted(Map.Entry.<JamPost, Double>comparingByValue().reversed())
+                    .limit(10)
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+        }
 
         List<Long> topIds = topJams.stream().map(JamPost::getId).collect(Collectors.toList());
         redisTemplate.opsForValue().set(REDIS_TREND_JAMS_KEY, topIds);

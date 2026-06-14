@@ -32,9 +32,6 @@ public class CommunityService {
     private final LikeViewCacheService likeViewCacheService;
     private final NotificationService notificationService;
 
-    @org.springframework.cache.annotation.Cacheable(value = "popularPosts", 
-        key = "{#boardType, #category, #part, #keyword, #pageable.pageNumber, #pageable.pageSize}", 
-        condition = "#isPopular != null && #isPopular == true")
     @Transactional(readOnly = true)
     public Page<CommunityPostResponseDTO> searchPosts(String boardType, String category, String part, String keyword, Pageable pageable, Long currentUserId, Boolean isPopular) {
         boolean popular = isPopular != null ? isPopular : false;

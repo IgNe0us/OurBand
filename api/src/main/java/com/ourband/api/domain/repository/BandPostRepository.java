@@ -12,4 +12,5 @@ public interface BandPostRepository extends JpaRepository<BandPost, Long> {
     List<BandPost> findByBandIdAndIsHiddenFalseOrderByCreatedAtDesc(Long bandId);
     BandPost findFirstByBandIdAndMediaTypeAndIsHiddenFalseOrderByCreatedAtDesc(Long bandId, String mediaType);
     List<BandPost> findByIsHiddenFalseAndCreatedAtAfter(java.time.LocalDateTime since);
+    List<BandPost> findByIsHiddenFalse();
 }

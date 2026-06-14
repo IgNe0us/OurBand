@@ -23,6 +23,9 @@ export type PopularJamVideo = VideoPost & {
   inst?: string; 
   style?: string;
   type?: "video" | "post";
+  parentId?: number | null;
+  originalVolume?: number;
+  myVolume?: number;
 };
 
 interface AudioJamModalProps {
@@ -66,8 +69,34 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
   const [localLikes, setLocalLikes] = useState(0);
   const [localShares, setLocalShares] = useState(0);
   const [localCommentCount, setLocalCommentCount] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(() => {
+    if (typeof window !== 'undefined') return Number(localStorage.getItem('ourband_jam_volume') || 100) === 0;
+    return false;
+  });
+  const [volume, setVolume] = useState(() => {
+    if (typeof window !== 'undefined') return Number(localStorage.getItem('ourband_jam_volume') || 100) / 100;
+    return 1;
+  });
+
+  useEffect(() => {
+    const handleVolChange = () => {
+      const v = Number(localStorage.getItem('ourband_jam_volume') || 100) / 100;
+      if (volume !== v) {
+        setVolume(v);
+        setIsMuted(v === 0);
+        if (videoRef.current) {
+          videoRef.current.volume = v;
+          videoRef.current.muted = (v === 0);
+        }
+        if (parentVideoRef.current) {
+          parentVideoRef.current.volume = v;
+          parentVideoRef.current.muted = (v === 0);
+        }
+      }
+    };
+    window.addEventListener('volumeChange', handleVolChange);
+    return () => window.removeEventListener('volumeChange', handleVolChange);
+  }, [volume]);
   const [progress, setProgress] = useState(0);
   const { openUserProfile } = useUserProfile();
   
@@ -81,19 +110,20 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
   const [editingComment, setEditingComment] = useState<{ id: number, text: string } | null>(null);
   const [reportTarget, setReportTarget] = useState<{ type: string, id: string | number, name: string } | null>(null);
 
+  const [parentVideo, setParentVideo] = useState<any>(null);
+  const parentVideoRef = useRef<HTMLVideoElement>(null);
+
   // 💡 1. 비디오 엘리먼트를 제어하기 위한 ref 추가
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // 💡 2. isPlaying 상태 변화에 따라 비디오를 진짜로 play / pause 시켜주는 로직
   useEffect(() => {
-    if (!videoRef.current) return;
-
     if (isPlaying) {
-      videoRef.current.play().catch(err => {
-        console.error("비디오 재생 실패:", err);
-      });
+      if (videoRef.current) videoRef.current.play().catch(console.error);
+      if (parentVideoRef.current) parentVideoRef.current.play().catch(console.error);
     } else {
-      videoRef.current.pause();
+      if (videoRef.current) videoRef.current.pause();
+      if (parentVideoRef.current) parentVideoRef.current.pause();
     }
   }, [isPlaying]);
 
@@ -126,25 +156,32 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
 
   const toggleMute = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (volume > 0) {
-      setVolume(0);
-      setIsMuted(true);
-      if (videoRef.current) {
-        videoRef.current.volume = 0;
-        videoRef.current.muted = true;
-      }
-    } else {
-      setVolume(1);
-      setIsMuted(false);
-      if (videoRef.current) {
-        videoRef.current.volume = 1;
-        videoRef.current.muted = false;
-      }
+    const newVol = volume > 0 ? 0 : 1;
+    setVolume(newVol);
+    setIsMuted(newVol === 0);
+    localStorage.setItem('ourband_jam_volume', (newVol * 100).toString());
+    window.dispatchEvent(new Event('volumeChange'));
+    
+    if (videoRef.current) {
+      videoRef.current.volume = newVol;
+      videoRef.current.muted = newVol === 0;
+    }
+    if (parentVideoRef.current) {
+      parentVideoRef.current.volume = newVol;
+      parentVideoRef.current.muted = newVol === 0;
     }
   };
 
   useEffect(() => {
     if (isOpen && post) {
+      if (videoRef.current) {
+        videoRef.current.volume = volume;
+        videoRef.current.muted = isMuted;
+      }
+      if (parentVideoRef.current) {
+        parentVideoRef.current.volume = volume;
+        parentVideoRef.current.muted = isMuted;
+      }
       getUserInfoApi().then(res => { if(res?.userId) setCurrentUserId(res.userId); }).catch(console.error);
       setIsPlaying(false);
       setIsFollowing(false);
@@ -153,6 +190,13 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
       setLocalLikes(post.likes ?? 0);
       setLocalShares(post.sharesCount ?? 0);
       setLocalCommentCount(post.commentsCount ?? 0);
+
+      if (isJam && post.parentId) {
+        apiClient.get(`/jams/${post.parentId}`).then(res => setParentVideo(res.data)).catch(console.error);
+      } else {
+        setParentVideo(null);
+      }
+
       if (isHistory || isJam) {
         if (isJam) {
           getJamCommentsApi(Number(post.id))
@@ -354,7 +398,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
           <div className="absolute top-4 right-4 flex items-center gap-3 z-50">
             {post.type === "video" && (
               <div className="relative group flex items-center">
-                <div className="absolute right-12 w-24 h-10 bg-black/40 backdrop-blur-md rounded-full flex items-center px-3 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                <div className="absolute right-8 w-24 h-10 pr-2 bg-black/40 backdrop-blur-md rounded-l-full flex items-center pl-3 border-y border-l border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
                   <input 
                     type="range" 
                     min="0" max="1" step="0.05" 
@@ -362,7 +406,16 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
                     onChange={(e) => {
                        const v = parseFloat(e.target.value);
                        setVolume(v);
-                       if (videoRef.current) videoRef.current.volume = v;
+                       localStorage.setItem('ourband_jam_volume', (v * 100).toString());
+                       window.dispatchEvent(new Event('volumeChange'));
+                       if (videoRef.current) {
+                         videoRef.current.volume = v;
+                         videoRef.current.muted = (v === 0);
+                       }
+                       if (parentVideoRef.current) {
+                         parentVideoRef.current.volume = v;
+                         parentVideoRef.current.muted = (v === 0);
+                       }
                        if (v === 0) setIsMuted(true);
                        else setIsMuted(false);
                     }}
@@ -371,7 +424,7 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
                 </div>
                 <button 
                   onClick={toggleMute}
-                  className="w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors border border-white/10 relative z-10"
+                  className="w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors border border-white/10 relative z-10 group-hover:rounded-l-none"
                 >
                   {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
                 </button>
@@ -388,16 +441,42 @@ export function AudioJamModal({ isOpen, onClose, post, isHistory = false, isJam 
           {/* 💡 미디어 영역 최적화: VIDEO 타입 방어 및 object-contain 적용으로 이미지 잘림/확대 현상 전면 해결 */}
           <div className="absolute inset-0 w-full h-full bg-black flex items-center justify-center">
             {post.type === "video" ? (
-              <video 
-                ref={videoRef}
-                src={post.thumbnail} 
-                className="w-full h-full object-contain opacity-90" 
-                controls={false}
-                muted={isMuted}
-                loop
-                playsInline
-                key={post.thumbnail}
-              />
+              parentVideo ? (
+                <div className="flex flex-col w-full h-full bg-black">
+                  <div className="flex-1 relative border-b border-white/20">
+                     <video 
+                       ref={parentVideoRef} 
+                       src={parentVideo.mediaUrl} 
+                       loop 
+                       playsInline 
+                       className="absolute inset-0 w-full h-full object-contain opacity-90" 
+                     />
+                     <div className="absolute top-24 left-4 bg-black/60 px-2 py-1 rounded text-[10px] text-white">Original</div>
+                  </div>
+                  <div className="flex-1 relative">
+                     <video 
+                       ref={videoRef} 
+                       src={post.thumbnail} 
+                       controls={false}
+                       muted={isMuted}
+                       loop 
+                       playsInline 
+                       className="absolute inset-0 w-full h-full object-contain opacity-90" 
+                     />
+                  </div>
+                </div>
+              ) : (
+                <video 
+                  ref={videoRef}
+                  src={post.thumbnail} 
+                  className="w-full h-full object-contain opacity-90" 
+                  controls={false}
+                  muted={isMuted}
+                  loop
+                  playsInline
+                  key={post.thumbnail}
+                />
+              )
             ) : (
               <img 
                 src={post.thumbnail} 

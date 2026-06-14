@@ -87,7 +87,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 System.out.println("[JwtAuthFilter] Token is invalid or expired!");
             }
         } else {
-            System.out.println("[JwtAuthFilter] No access_token cookie found in request to " + request.getRequestURI());
+            // Optional: System.out.println("[JwtAuthFilter] No access_token cookie found in request to " + request.getRequestURI());
         }
 
         filterChain.doFilter(request, response);
