@@ -22,7 +22,7 @@ export default function PortfolioPage() {
             preload="auto"
           >
             {/* Cloudflare R2 비디오 URL 적용 완료 */}
-            <source src="https://pub-7182cb8a63b442d99599c60ce1f02ba7.r2.dev/profiles/MusicApp.mp4" type="video/mp4" />
+            <source src="https://pub-7182cb8a63b442d99599c60ce1f02ba7.r2.dev/profiles/KakaoTalk_20260703_135231653.mp4" type="video/mp4" />
             브라우저가 동영상 재생을 지원하지 않습니다.
           </video>
         </div>
